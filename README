@@ -1,5 +1,13 @@
-FFmpeg README
+FFmbc (Brevity custom) README
 -------------
+Custom FFmbc used in Brevity (www.brevityv.com)
+Included modifications:
+- Alpha channel support for DNxHD
+- Added extra bitrate options for DNxHD
+- Added raw RGB48 support
+- Minor enhancements
+
+Applied patches are included in patches/ directory
 
 1) Documentation
 ----------------
