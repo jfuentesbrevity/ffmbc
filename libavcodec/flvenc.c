@@ -53,9 +53,9 @@ void ff_flv_encode_picture_header(MpegEncContext * s, int picture_number)
         put_bits(&s->pb, 16, s->width);
         put_bits(&s->pb, 16, s->height);
       }
-      put_bits(&s->pb, 2, s->pict_type == FF_P_TYPE); /* PictureType */
+      put_bits(&s->pb, 2, s->pict_type == AV_PICTURE_TYPE_P); /* PictureType */
       put_bits(&s->pb, 1, 1); /* DeblockingFlag: on */
-      put_bits(&s->pb, 5, s->qp); /* Quantizer */
+      put_bits(&s->pb, 5, s->qscale); /* Quantizer */
       put_bits(&s->pb, 1, 0); /* ExtraInformation */
 
       if(s->h263_aic){

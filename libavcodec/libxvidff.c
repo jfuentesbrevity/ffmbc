@@ -25,14 +25,12 @@
  * @author Adam Thayer (krevnik@comcast.net)
  */
 
-/* needed for mkstemp() */
-#define _XOPEN_SOURCE 600
-
 #include <xvid.h>
 #include <unistd.h>
 #include "avcodec.h"
 #include "libavutil/cpu.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mathematics.h"
 #include "libxvid_internal.h"
 #if !HAVE_MKSTEMP
 #include <fcntl.h>
@@ -450,14 +448,14 @@ static int xvid_encode_frame(AVCodecContext *avctx,
     xvid_enc_frame.vol_flags = x->vol_flags;
     xvid_enc_frame.motion = x->me_flags;
     xvid_enc_frame.type =
-        picture->pict_type == FF_I_TYPE ? XVID_TYPE_IVOP :
-        picture->pict_type == FF_P_TYPE ? XVID_TYPE_PVOP :
-        picture->pict_type == FF_B_TYPE ? XVID_TYPE_BVOP :
+        picture->pict_type == AV_PICTURE_TYPE_I ? XVID_TYPE_IVOP :
+        picture->pict_type == AV_PICTURE_TYPE_P ? XVID_TYPE_PVOP :
+        picture->pict_type == AV_PICTURE_TYPE_B ? XVID_TYPE_BVOP :
                                           XVID_TYPE_AUTO;
 
     /* Pixel aspect ratio setting */
-    if (avctx->sample_aspect_ratio.num < 1 || avctx->sample_aspect_ratio.num > 255 ||
-        avctx->sample_aspect_ratio.den < 1 || avctx->sample_aspect_ratio.den > 255) {
+    if (avctx->sample_aspect_ratio.num < 0 || avctx->sample_aspect_ratio.num > 255 ||
+        avctx->sample_aspect_ratio.den < 0 || avctx->sample_aspect_ratio.den > 255) {
         av_log(avctx, AV_LOG_ERROR, "Invalid pixel aspect ratio %i/%i\n",
                avctx->sample_aspect_ratio.num, avctx->sample_aspect_ratio.den);
         return -1;
@@ -493,13 +491,13 @@ static int xvid_encode_frame(AVCodecContext *avctx,
     if( 0 <= xerr ) {
         p->quality = xvid_enc_stats.quant * FF_QP2LAMBDA;
         if( xvid_enc_stats.type == XVID_TYPE_PVOP )
-            p->pict_type = FF_P_TYPE;
+            p->pict_type = AV_PICTURE_TYPE_P;
         else if( xvid_enc_stats.type == XVID_TYPE_BVOP )
-            p->pict_type = FF_B_TYPE;
+            p->pict_type = AV_PICTURE_TYPE_B;
         else if( xvid_enc_stats.type == XVID_TYPE_SVOP )
-            p->pict_type = FF_S_TYPE;
+            p->pict_type = AV_PICTURE_TYPE_S;
         else
-            p->pict_type = FF_I_TYPE;
+            p->pict_type = AV_PICTURE_TYPE_I;
         if( xvid_enc_frame.out_flags & XVID_KEYFRAME ) {
             p->key_frame = 1;
             if( x->quicktime_format )
@@ -531,6 +529,7 @@ static av_cold int xvid_encode_close(AVCodecContext *avctx) {
     if( x->twopassbuffer != NULL ) {
         av_free(x->twopassbuffer);
         av_free(x->old_twopassbuffer);
+        avctx->stats_out = NULL;
     }
     av_free(x->twopassfile);
     av_free(x->intra_matrix);
@@ -751,7 +750,7 @@ static int xvid_ff_2pass_before(struct xvid_context *ref,
 static int xvid_ff_2pass_after(struct xvid_context *ref,
                                 xvid_plg_data_t *param) {
     char *log = ref->twopassbuffer;
-    char *frame_types = " ipbs";
+    const char *frame_types = " ipbs";
     char frame_type;
 
     /* Quick bounds check */

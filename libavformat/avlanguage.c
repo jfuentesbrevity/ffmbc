@@ -738,6 +738,9 @@ const char *av_convert_lang_to(const char *lang, enum AVLangCodespace target_cod
     const LangEntry *entry = NULL;
     const int NB_CODESPACES = sizeof(lang_table_counts)/sizeof(*lang_table_counts);
 
+    if (!lang)
+        return NULL;
+
     if (target_codespace >= NB_CODESPACES)
         return NULL;
 

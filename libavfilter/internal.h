@@ -27,6 +27,12 @@
 #include "avfilter.h"
 #include "avfiltergraph.h"
 
+#define POOL_SIZE 32
+typedef struct AVFilterPool {
+    AVFilterBufferRef *pic[POOL_SIZE];
+    int count;
+} AVFilterPool;
+
 /**
  * Check for the validity of graph.
  *
@@ -52,4 +58,7 @@ int ff_avfilter_graph_config_formats(AVFilterGraph *graph);
 /** default handler for freeing audio/video buffer when there are no references left */
 void ff_avfilter_default_free_buffer(AVFilterBuffer *buf);
 
-#endif  /* AVFILTER_INTERNAL_H */
+/** Tell is a format is contained in the provided list terminated by -1. */
+int ff_fmt_is_in(int fmt, const int *fmts);
+
+#endif /* AVFILTER_INTERNAL_H */

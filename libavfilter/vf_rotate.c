@@ -65,7 +65,7 @@ static int query_formats(AVFilterContext *ctx)
         PIX_FMT_NONE
     };
 
-    avfilter_set_common_formats(ctx, avfilter_make_format_list(pix_fmts));
+    avfilter_set_common_pixel_formats(ctx, avfilter_make_format_list(pix_fmts));
     return 0;
 }
 
@@ -169,6 +169,9 @@ static void start_frame(AVFilterLink *link, AVFilterBufferRef *picref)
 
     out->out_buf      = avfilter_get_video_buffer(out, AV_PERM_WRITE, out->w, out->h);
     out->out_buf->pts = picref->pts;
+
+    out->out_buf->video->sample_aspect_ratio.num = picref->video->sample_aspect_ratio.den;
+    out->out_buf->video->sample_aspect_ratio.den = picref->video->sample_aspect_ratio.num;
 
     avfilter_start_frame(out, avfilter_ref_buffer(out->out_buf, ~0));
 }

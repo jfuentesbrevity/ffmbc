@@ -6,7 +6,7 @@
  *
  * FFmpeg is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
- * License as published by the Free Software Foundation;
+ * License as published by the Free Software Foundation; either
  * version 2 of the License.
  *
  * FFmpeg is distributed in the hope that it will be useful,
@@ -32,7 +32,7 @@
  */
 int ff_framenum_to_drop_timecode(int frame_num, int fps);
 
-int ff_framenum_to_timecode(char timecode[32], int frame_num, int drop, int fps);
+int ff_framenum_to_timecode(char timecode[16], int frame_num, int drop, int fps);
 
 int ff_timecode_to_framenum(const char *timecode, AVRational tb, int *drop);
 

@@ -1,7 +1,6 @@
 /*
- * MMX optimized DSP utils
- * Copyright (c) 2000, 2001 Fabrice Bellard
- * Copyright (c) 2002-2004 Michael Niedermayer <michaelni@gmx.at>
+ * MMX optimized PNG utils
+ * Copyright (c) 2008 Loren Merritt
  *
  * This file is part of FFmpeg.
  *
@@ -19,7 +18,6 @@
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
- * MMX optimization by Nick Kurshev <nickols_k@mail.ru>
  */
 
 #include "libavutil/cpu.h"
@@ -92,11 +90,10 @@ static void add_paeth_prediction_##cpu(uint8_t *dst, uint8_t *src, uint8_t *top,
         "pand      %%mm1, %%mm6 \n"\
         "pand      %%mm4, %%mm2 \n"\
         "punpcklbw %%mm7, %%mm0 \n"\
-        "movq      %6,    %%mm5 \n"\
         "paddw     %%mm6, %%mm0 \n"\
         "paddw     %%mm2, %%mm3 \n"\
         "paddw     %%mm3, %%mm0 \n"\
-        "pand      %%mm5, %%mm0 \n"\
+        "pand      %6   , %%mm0 \n"\
         "movq      %%mm0, %%mm3 \n"\
         "packuswb  %%mm3, %%mm3 \n"\
         "movd      %%mm3, (%1,%0) \n"\

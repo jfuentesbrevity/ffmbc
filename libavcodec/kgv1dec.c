@@ -150,6 +150,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     c->avctx = avctx;
     avctx->pix_fmt = PIX_FMT_RGB555;
+    avcodec_get_frame_defaults(&c->pic);
 
     return 0;
 }
@@ -173,6 +174,5 @@ AVCodec ff_kgv1_decoder = {
     NULL,
     decode_end,
     decode_frame,
-    .max_lowres = 1,
     .long_name = NULL_IF_CONFIG_SMALL("Kega Game Video"),
 };

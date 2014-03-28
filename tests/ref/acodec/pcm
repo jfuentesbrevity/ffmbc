@@ -6,63 +6,67 @@ f443a8eeb1647ec1eeb8370c939e52d4 *./tests/data/acodec/pcm_mulaw.wav
 529256 ./tests/data/acodec/pcm_mulaw.wav
 1c3eeaa8814ebd4916780dff80ed6dc5 *./tests/data/pcm.acodec.out.wav
 stddev:  103.38 PSNR: 56.04 MAXDIFF:  644 bytes:  1058400/  1058400
-ff33e4e8ca8f5e39df50db44fdfae7de *./tests/data/acodec/pcm_s8.mov
-530865 ./tests/data/acodec/pcm_s8.mov
+88b1802d21d3ee6d831901c42912d32d *./tests/data/acodec/pcm_s8.mov
+529821 ./tests/data/acodec/pcm_s8.mov
 652edf30f35ad89bf27bcc9d2f9c7b53 *./tests/data/pcm.acodec.out.wav
 stddev:  147.89 PSNR: 52.93 MAXDIFF:  255 bytes:  1058400/  1058400
 98cadb3502dbdc99e6e077c28b1a036c *./tests/data/acodec/pcm_u8.wav
 529244 ./tests/data/acodec/pcm_u8.wav
 652edf30f35ad89bf27bcc9d2f9c7b53 *./tests/data/pcm.acodec.out.wav
 stddev:  147.89 PSNR: 52.93 MAXDIFF:  255 bytes:  1058400/  1058400
-9f3100394d27404ee0a4cdc596b3127d *./tests/data/acodec/pcm_s16be.mov
-1060065 ./tests/data/acodec/pcm_s16be.mov
+dd44df06eba27e008f5c4352601be96e *./tests/data/acodec/pcm_s16be.mov
+1059037 ./tests/data/acodec/pcm_s16be.mov
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/acodec/pcm_s16le.wav
 1058444 ./tests/data/acodec/pcm_s16le.wav
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
-352a6bcf51d0f3ca4bf27c423a3d4d14 *./tests/data/acodec/pcm_s16be.mkv
-1060650 ./tests/data/acodec/pcm_s16be.mkv
+af717ca95eaca310772eb1238c745d1b *./tests/data/acodec/pcm_s16be.mkv
+1060638 ./tests/data/acodec/pcm_s16be.mkv
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
-2c089d83b2699c02c9358415e00a9707 *./tests/data/acodec/pcm_s16le.mkv
-1060650 ./tests/data/acodec/pcm_s16le.mkv
+c4f51bf32fad2f7af8ea5beedb56168b *./tests/data/acodec/pcm_s16le.mkv
+1060638 ./tests/data/acodec/pcm_s16le.mkv
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
-6b8c9ce01b6af2ab8f3f815784b4faf3 *./tests/data/acodec/pcm_s24be.mov
-1589265 ./tests/data/acodec/pcm_s24be.mov
+4b53f27a1710f5ea7642f4c8401280e7 *./tests/data/acodec/pcm_s24be.mov
+1588237 ./tests/data/acodec/pcm_s24be.mov
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
-a85380fb79b0d4fff38e24ac1e34bb94 *./tests/data/acodec/pcm_s24le.wav
-1587668 ./tests/data/acodec/pcm_s24le.wav
+aaba3cf534ddddf5bcf663bc8c5b5331 *./tests/data/acodec/pcm_s24le.wav
+1587644 ./tests/data/acodec/pcm_s24le.wav
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
-6551ec79ab8f3145ebb3ee128b6b3ea6 *./tests/data/acodec/pcm_s32be.mov
-2118465 ./tests/data/acodec/pcm_s32be.mov
+ac54f29853af579e954b119c13c261a3 *./tests/data/acodec/pcm_s32be.mov
+2117441 ./tests/data/acodec/pcm_s32be.mov
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
-da6ed80f4f40f0082577dea80827e014 *./tests/data/acodec/pcm_s32le.wav
-2116868 ./tests/data/acodec/pcm_s32le.wav
+7661c9b6f221d9f57985a9e4d92c4e63 *./tests/data/acodec/pcm_s32le.wav
+2116844 ./tests/data/acodec/pcm_s32le.wav
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
 118ff3dc83c62ce9ce669eef57e55bb2 *./tests/data/acodec/pcm_f32be.au
 2116824 ./tests/data/acodec/pcm_f32be.au
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
-46f44f86a18984a832206ab9e29a79f2 *./tests/data/acodec/pcm_f32le.wav
-2116880 ./tests/data/acodec/pcm_f32le.wav
+4104d0804a80fb8d02952ca5103b1012 *./tests/data/acodec/pcm_f32le.wav
+2116856 ./tests/data/acodec/pcm_f32le.wav
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
 8112296b1ed94f72f20d04b1a54850a7 *./tests/data/acodec/pcm_f64be.au
 4233624 ./tests/data/acodec/pcm_f64be.au
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
-ba17c6d1a270e1333e981f239bf7eb45 *./tests/data/acodec/pcm_f64le.wav
-4233680 ./tests/data/acodec/pcm_f64le.wav
+26598accec99bdbaf76d575045aca7a9 *./tests/data/acodec/pcm_f64le.wav
+4233656 ./tests/data/acodec/pcm_f64le.wav
 95e54b261530a1bcf6de6fe3b21dc5f6 *./tests/data/pcm.acodec.out.wav
 stddev:    0.00 PSNR:999.99 MAXDIFF:    0 bytes:  1058400/  1058400
 8c74234928ed425b1171211a89f67ead *./tests/data/acodec/pcm_zork.wav
 529256 ./tests/data/acodec/pcm_zork.wav
 864c8c866ac25642c29a13b122c70709 *./tests/data/pcm.acodec.out.wav
 stddev:  633.11 PSNR: 40.30 MAXDIFF:32768 bytes:  1058400/  1058400
+4ac6f83d6d4a998eff50a15511c41bed *./tests/data/acodec/pcm_s24daud.302
+10368424 ./tests/data/acodec/pcm_s24daud.302
+156a356f98198515aa92b7383b5b442a *./tests/data/pcm.acodec.out.wav
+stddev: 9416.32 PSNR: 16.85 MAXDIFF:42744 bytes:  6911592/  1058400

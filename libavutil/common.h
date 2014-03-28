@@ -47,6 +47,8 @@
 #define RSHIFT(a,b) ((a) > 0 ? ((a) + ((1<<(b))>>1))>>(b) : ((a) + ((1<<(b))>>1)-1)>>(b))
 /* assume b>0 */
 #define ROUNDED_DIV(a,b) (((a)>0 ? (a) + ((b)>>1) : (a) - ((b)>>1))/(b))
+#define FFUDIV(a,b) (((a)>0 ?(a):(a)-(b)+1) / (b))
+#define FFUMOD(a,b) ((a)-(b)*FFUDIV(a,b))
 #define FFABS(a) ((a) >= 0 ? (a) : (-(a)))
 #define FFSIGN(a) ((a) > 0 ? 1 : -1)
 
@@ -64,7 +66,7 @@ extern const uint8_t ff_log2_tab[256];
 
 extern const uint8_t av_reverse[256];
 
-static inline av_const int av_log2_c(unsigned int v)
+static av_always_inline av_const int av_log2_c(unsigned int v)
 {
     int n = 0;
     if (v & 0xffff0000) {
@@ -80,7 +82,7 @@ static inline av_const int av_log2_c(unsigned int v)
     return n;
 }
 
-static inline av_const int av_log2_16bit_c(unsigned int v)
+static av_always_inline av_const int av_log2_16bit_c(unsigned int v)
 {
     int n = 0;
     if (v & 0xff00) {
@@ -107,7 +109,7 @@ static inline av_const int av_log2_16bit_c(unsigned int v)
  * @param amax maximum value of the clip range
  * @return clipped value
  */
-static inline av_const int av_clip_c(int a, int amin, int amax)
+static av_always_inline av_const int av_clip_c(int a, int amin, int amax)
 {
     if      (a < amin) return amin;
     else if (a > amax) return amax;
@@ -119,7 +121,7 @@ static inline av_const int av_clip_c(int a, int amin, int amax)
  * @param a value to clip
  * @return clipped value
  */
-static inline av_const uint8_t av_clip_uint8_c(int a)
+static av_always_inline av_const uint8_t av_clip_uint8_c(int a)
 {
     if (a&(~0xFF)) return (-a)>>31;
     else           return a;
@@ -130,7 +132,7 @@ static inline av_const uint8_t av_clip_uint8_c(int a)
  * @param a value to clip
  * @return clipped value
  */
-static inline av_const int8_t av_clip_int8_c(int a)
+static av_always_inline av_const int8_t av_clip_int8_c(int a)
 {
     if ((a+0x80) & ~0xFF) return (a>>31) ^ 0x7F;
     else                  return a;
@@ -141,7 +143,7 @@ static inline av_const int8_t av_clip_int8_c(int a)
  * @param a value to clip
  * @return clipped value
  */
-static inline av_const uint16_t av_clip_uint16_c(int a)
+static av_always_inline av_const uint16_t av_clip_uint16_c(int a)
 {
     if (a&(~0xFFFF)) return (-a)>>31;
     else             return a;
@@ -152,7 +154,7 @@ static inline av_const uint16_t av_clip_uint16_c(int a)
  * @param a value to clip
  * @return clipped value
  */
-static inline av_const int16_t av_clip_int16_c(int a)
+static av_always_inline av_const int16_t av_clip_int16_c(int a)
 {
     if ((a+0x8000) & ~0xFFFF) return (a>>31) ^ 0x7FFF;
     else                      return a;
@@ -163,7 +165,7 @@ static inline av_const int16_t av_clip_int16_c(int a)
  * @param a value to clip
  * @return clipped value
  */
-static inline av_const int32_t av_clipl_int32_c(int64_t a)
+static av_always_inline av_const int32_t av_clipl_int32_c(int64_t a)
 {
     if ((a+0x80000000u) & ~UINT64_C(0xFFFFFFFF)) return (a>>63) ^ 0x7FFFFFFF;
     else                                         return a;
@@ -188,7 +190,7 @@ static av_always_inline av_const unsigned av_clip_uintp2_c(int a, int p)
  * @param amax maximum value of the clip range
  * @return clipped value
  */
-static inline av_const float av_clipf_c(float a, float amin, float amax)
+static av_always_inline av_const float av_clipf_c(float a, float amin, float amax)
 {
     if      (a < amin) return amin;
     else if (a > amax) return amax;
@@ -199,7 +201,7 @@ static inline av_const float av_clipf_c(float a, float amin, float amax)
  * @param x value used to compute ceil(log2(x))
  * @return computed ceiling of log2(x)
  */
-static inline av_const int av_ceil_log2_c(int x)
+static av_always_inline av_const int av_ceil_log2_c(int x)
 {
     return av_log2((x - 1) << 1);
 }
@@ -209,7 +211,7 @@ static inline av_const int av_ceil_log2_c(int x)
  * @param x value to count bits of
  * @return the number of bits set to one in x
  */
-static inline av_const int av_popcount_c(uint32_t x)
+static av_always_inline av_const int av_popcount_c(uint32_t x)
 {
     x -= (x >> 1) & 0x55555555;
     x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
@@ -268,16 +270,16 @@ static inline av_const int av_popcount_c(uint32_t x)
         }\
     }\
 
-/*!
- * \def PUT_UTF8(val, tmp, PUT_BYTE)
+/**
+ * @def PUT_UTF8(val, tmp, PUT_BYTE)
  * Convert a 32-bit Unicode character to its UTF-8 encoded form (up to 4 bytes long).
- * \param val is an input-only argument and should be of type uint32_t. It holds
+ * @param val is an input-only argument and should be of type uint32_t. It holds
  * a UCS-4 encoded Unicode character that is to be converted to UTF-8. If
  * val is given as a function it is executed only once.
- * \param tmp is a temporary variable and should be of type uint8_t. It
+ * @param tmp is a temporary variable and should be of type uint8_t. It
  * represents an intermediate value during conversion that is to be
  * output by PUT_BYTE.
- * \param PUT_BYTE writes the converted UTF-8 bytes to any proper destination.
+ * @param PUT_BYTE writes the converted UTF-8 bytes to any proper destination.
  * It could be a function or a statement, and uses tmp as the input byte.
  * For example, PUT_BYTE could be "*output++ = tmp;" PUT_BYTE will be
  * executed up to 4 times for values in the valid UTF-8 range and up to
@@ -304,16 +306,16 @@ static inline av_const int av_popcount_c(uint32_t x)
         }\
     }
 
-/*!
- * \def PUT_UTF16(val, tmp, PUT_16BIT)
+/**
+ * @def PUT_UTF16(val, tmp, PUT_16BIT)
  * Convert a 32-bit Unicode character to its UTF-16 encoded form (2 or 4 bytes).
- * \param val is an input-only argument and should be of type uint32_t. It holds
+ * @param val is an input-only argument and should be of type uint32_t. It holds
  * a UCS-4 encoded Unicode character that is to be converted to UTF-16. If
  * val is given as a function it is executed only once.
- * \param tmp is a temporary variable and should be of type uint16_t. It
+ * @param tmp is a temporary variable and should be of type uint16_t. It
  * represents an intermediate value during conversion that is to be
  * output by PUT_16BIT.
- * \param PUT_16BIT writes the converted UTF-16 data to any proper destination
+ * @param PUT_16BIT writes the converted UTF-16 data to any proper destination
  * in desired endianness. It could be a function or a statement, and uses tmp
  * as the input byte.  For example, PUT_BYTE could be "*output++ = tmp;"
  * PUT_BYTE will be executed 1 or 2 times depending on input character.

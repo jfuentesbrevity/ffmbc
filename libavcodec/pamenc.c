@@ -40,7 +40,7 @@ static int pam_encode_frame(AVCodecContext *avctx, unsigned char *outbuf,
     }
 
     *p           = *pict;
-    p->pict_type = FF_I_TYPE;
+    p->pict_type = AV_PICTURE_TYPE_I;
     p->key_frame = 1;
 
     s->bytestream_start =
@@ -115,6 +115,7 @@ AVCodec ff_pam_encoder = {
     sizeof(PNMContext),
     ff_pnm_init,
     pam_encode_frame,
+    .capabilities = CODEC_CAP_LOSSLESS,
     .pix_fmts  = (const enum PixelFormat[]){PIX_FMT_RGB24, PIX_FMT_RGB32, PIX_FMT_GRAY8, PIX_FMT_MONOWHITE, PIX_FMT_NONE},
     .long_name = NULL_IF_CONFIG_SMALL("PAM (Portable AnyMap) image"),
 };

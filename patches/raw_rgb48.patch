@@ -1,0 +1,20 @@
+Index: libavcodec/rawdec.c
+===================================================================
+--- libavcodec/rawdec.c	(revision 1275)
++++ libavcodec/rawdec.c	(working copy)
+@@ -57,6 +57,7 @@
+     { PIX_FMT_RGB555, 16 },
+     { PIX_FMT_BGR24,  24 },
+     { PIX_FMT_BGRA,   32 },
++    { PIX_FMT_RGB48,  48 },
+     { PIX_FMT_NONE, 0 },
+ };
+ 
+@@ -71,6 +72,7 @@
+     { PIX_FMT_RGB24,    24 },
+     { PIX_FMT_ARGB,     32 },
+     { PIX_FMT_MONOWHITE,33 },
++    { PIX_FMT_RGB48,    48 },
+     { PIX_FMT_NONE, 0 },
+ };
+ 

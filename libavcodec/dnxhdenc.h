@@ -25,8 +25,9 @@
 #define AVCODEC_DNXHDENC_H
 
 #include <stdint.h>
-#include "libavcodec/mpegvideo.h"
-#include "libavcodec/dnxhddata.h"
+#include "dsputil.h"
+#include "put_bits.h"
+#include "dnxhddata.h"
 
 typedef struct {
     uint16_t mb;
@@ -50,10 +51,14 @@ typedef struct DNXHDEncContext {
     uint32_t *slice_size;
     uint32_t *slice_offs;
 
-    struct DNXHDEncContext *thread[MAX_THREADS];
+    struct DNXHDEncContext **thread;
 
+    // Because our samples are either 8 or 16 bits for 8-bit and 10-bit
+    // encoding respectively, these refer either to bytes or to two-byte words.
     unsigned dct_y_offset;
     unsigned dct_uv_offset;
+    unsigned block_width_l2;
+
     int interlaced;
     int cur_field;
 
@@ -73,12 +78,11 @@ typedef struct DNXHDEncContext {
     uint16_t (*qmatrix_l16)[2][64];
     uint16_t (*qmatrix_c16)[2][64];
 
-    int (*q_intra_matrix)[64];
-    uint16_t (*q_intra_matrix16)[2][64];
-    int max_qcoeff; ///< maximum encodable coefficient
+    int (*cur_qmatrix)[64];
+    uint16_t (*cur_qmatrix16)[2][64];
 
-    int intra_quant_bias; ///< bias for the quantizer
-    ScanTable intra_scantable;
+    int quant_bias; ///< bias for the quantizer
+    ScanTable scantable;
 
     unsigned frame_bits;
     uint8_t *src[3];
@@ -102,10 +106,8 @@ typedef struct DNXHDEncContext {
     RCCMPEntry *mb_cmp;
     RCEntry   (*mb_rc)[8160];
 
-    void (*get_pixels_8x4_sym)(DCTELEM */*align 16*/, const uint8_t *, int);
-    int (*dct_quantize)(struct DNXHDEncContext *ctx, DCTELEM *block/*align 16*/,
-                        int n, int qscale, int *overflow);
-    void (*denoise_dct)(struct DNXHDEncContext *ctx, DCTELEM *block);
+    void (*get_pixels_8x4_sym)(DCTELEM *, const uint8_t *, int);
+    int (*dct_quantize)(struct DNXHDEncContext *ctx, DCTELEM *block, int qscale);
 } DNXHDEncContext;
 
 void ff_dnxhd_init_mmx(DNXHDEncContext *ctx);

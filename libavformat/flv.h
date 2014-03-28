@@ -1,5 +1,4 @@
-/**
- * @file
+/*
  * FLV common header
  *
  * Copyright (c) 2006 The FFmpeg Project
@@ -19,6 +18,11 @@
  * You should have received a copy of the GNU General Public
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+/**
+ * @file
+ * FLV common header
  */
 
 #ifndef AVFORMAT_FLV_H
@@ -41,6 +45,11 @@
 #define FLV_VIDEO_FRAMETYPE_MASK  0xf0
 
 #define AMF_END_OF_OBJECT         0x09
+
+#define KEYFRAMES_TAG            "keyframes"
+#define KEYFRAMES_TIMESTAMP_TAG  "times"
+#define KEYFRAMES_BYTEOFFSET_TAG "filepositions"
+
 
 enum {
     FLV_HEADER_FLAG_HASVIDEO = 1,

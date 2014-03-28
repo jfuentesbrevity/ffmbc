@@ -40,6 +40,7 @@
 
 
 //FIXME maybe link the orig in
+//XXX: identical pix_fmt must be following with each others
 static const struct {
     int fmt;
     enum PixelFormat pix_fmt;
@@ -134,13 +135,13 @@ extern const vf_info_t vf_info_palette;
 extern const vf_info_t vf_info_lavc;
 extern const vf_info_t vf_info_zrmjpeg;
 extern const vf_info_t vf_info_dvbscale;
-extern const vf_info_t vf_info_cropdetect;
 extern const vf_info_t vf_info_test;
 extern const vf_info_t vf_info_noise;
 extern const vf_info_t vf_info_yvu9;
 extern const vf_info_t vf_info_lavcdeint;
 extern const vf_info_t vf_info_eq;
 extern const vf_info_t vf_info_eq2;
+extern const vf_info_t vf_info_gradfun;
 extern const vf_info_t vf_info_halfpack;
 extern const vf_info_t vf_info_dint;
 extern const vf_info_t vf_info_1bpp;
@@ -149,7 +150,6 @@ extern const vf_info_t vf_info_unsharp;
 extern const vf_info_t vf_info_swapuv;
 extern const vf_info_t vf_info_il;
 extern const vf_info_t vf_info_fil;
-extern const vf_info_t vf_info_boxblur;
 extern const vf_info_t vf_info_sab;
 extern const vf_info_t vf_info_smartblur;
 extern const vf_info_t vf_info_perspective;
@@ -179,7 +179,6 @@ extern const vf_info_t vf_info_fspp;
 extern const vf_info_t vf_info_pp7;
 extern const vf_info_t vf_info_yuvcsp;
 extern const vf_info_t vf_info_kerndeint;
-extern const vf_info_t vf_info_rgbtest;
 extern const vf_info_t vf_info_qp;
 extern const vf_info_t vf_info_phase;
 extern const vf_info_t vf_info_divtc;
@@ -189,7 +188,6 @@ extern const vf_info_t vf_info_screenshot;
 extern const vf_info_t vf_info_ass;
 extern const vf_info_t vf_info_mcdeint;
 extern const vf_info_t vf_info_yadif;
-extern const vf_info_t vf_info_blackframe;
 extern const vf_info_t vf_info_geq;
 extern const vf_info_t vf_info_ow;
 extern const vf_info_t vf_info_fixpts;
@@ -198,9 +196,6 @@ extern const vf_info_t vf_info_stereo3d;
 
 static const vf_info_t* const filters[]={
     &vf_info_2xsai,
-    &vf_info_blackframe,
-    &vf_info_boxblur,
-    &vf_info_cropdetect,
     &vf_info_decimate,
     &vf_info_delogo,
     &vf_info_denoise3d,
@@ -218,6 +213,7 @@ static const vf_info_t* const filters[]={
     &vf_info_framestep,
     &vf_info_fspp,
     &vf_info_geq,
+    &vf_info_gradfun,
     &vf_info_harddup,
     &vf_info_hqdn3d,
     &vf_info_hue,
@@ -237,7 +233,6 @@ static const vf_info_t* const filters[]={
     &vf_info_qp,
     &vf_info_rectangle,
     &vf_info_remove_logo,
-    &vf_info_rgbtest,
     &vf_info_rotate,
     &vf_info_sab,
     &vf_info_screenshot,
@@ -283,11 +278,6 @@ zrmjpeg
 
 CpuCaps gCpuCaps; //FIXME initialize this so optims work
 
-
-//exact copy from vf_scale.c
-int get_sws_cpuflags(void){
-    return 0;
-}
 
 static void sws_getFlagsAndFilterFromCmdLine(int *flags, SwsFilter **srcFilterParam, SwsFilter **dstFilterParam)
 {
@@ -341,7 +331,7 @@ struct SwsContext *sws_getContextFromCmdLine(int srcW, int srcH, int srcFormat, 
         if (srcFormat == IMGFMT_RGB8 || srcFormat == IMGFMT_BGR8) sfmt = PIX_FMT_PAL8;
         sws_getFlagsAndFilterFromCmdLine(&flags, &srcFilterParam, &dstFilterParam);
 
-        return sws_getContext(srcW, srcH, sfmt, dstW, dstH, dfmt, flags | get_sws_cpuflags(), srcFilterParam, dstFilterParam, NULL);
+        return sws_getContext(srcW, srcH, sfmt, dstW, dstH, dfmt, flags , srcFilterParam, dstFilterParam, NULL);
 }
 
 typedef struct {
@@ -732,7 +722,7 @@ static av_cold int init(AVFilterContext *ctx, const char *args, void *opaque)
 
     m->avfctx= ctx;
 
-    if(!args || 1!=sscanf(args, "%255[^:]", name)){
+    if(!args || 1!=sscanf(args, "%255[^:=]", name)){
         av_log(ctx, AV_LOG_ERROR, "Invalid parameter.\n");
         return AVERROR(EINVAL);
     }
@@ -787,18 +777,22 @@ static int query_formats(AVFilterContext *ctx)
 {
     AVFilterFormats *avfmts=NULL;
     MPContext *m = ctx->priv;
+    enum PixelFormat lastpixfmt = PIX_FMT_NONE;
     int i;
 
     for(i=0; conversion_map[i].fmt; i++){
         av_log(ctx, AV_LOG_DEBUG, "query: %X\n", conversion_map[i].fmt);
         if(m->vf.query_format(&m->vf, conversion_map[i].fmt)){
             av_log(ctx, AV_LOG_DEBUG, "supported,adding\n");
-            avfilter_add_format(&avfmts, conversion_map[i].pix_fmt);
+            if (conversion_map[i].pix_fmt != lastpixfmt) {
+                avfilter_add_format(&avfmts, conversion_map[i].pix_fmt);
+                lastpixfmt = conversion_map[i].pix_fmt;
+            }
         }
     }
 
     //We assume all allowed input formats are also allowed output formats
-    avfilter_set_common_formats(ctx, avfmts);
+    avfilter_set_common_pixel_formats(ctx, avfmts);
     return 0;
 }
 
@@ -860,7 +854,6 @@ static void end_frame(AVFilterLink *inlink)
 {
     MPContext *m = inlink->dst->priv;
     AVFilterBufferRef *inpic  = inlink->cur_buf;
-    AVFilterLink *outlink = inlink->dst->outputs[0];
     int i;
     double pts= MP_NOPTS_VALUE;
     mp_image_t* mpi = new_mp_image(inpic->video->w, inpic->video->h);
@@ -885,7 +878,7 @@ static void end_frame(AVFilterLink *inlink)
     }
     free_mp_image(mpi);
 
-//    avfilter_unref_buffer(inpic);
+    avfilter_unref_buffer(inpic);
 }
 
 AVFilter avfilter_vf_mp = {

@@ -50,26 +50,27 @@ static int rawvideo_read_seek(AVFormatContext *s, int stream_index,
     AVStream *st = s->streams[0];
     unsigned frame_size;
 
-    if (url_is_streamed(s->pb))
+    if (!s->pb->seekable)
         return -1;
 
     frame_size = avpicture_get_size(st->codec->pix_fmt,
                                     st->codec->width, st->codec->height);
-    if ((ts+1)*frame_size > url_fsize(s->pb))
+    if ((ts+1)*frame_size > avio_size(s->pb))
         return -1;
 
-    url_fseek(s->pb, ts*frame_size, SEEK_SET);
+    avio_seek(s->pb, ts*frame_size, SEEK_SET);
     return 0;
 }
 
 AVInputFormat ff_rawvideo_demuxer = {
-    "rawvideo",
-    NULL_IF_CONFIG_SMALL("raw video format"),
-    0,
-    NULL,
-    ff_raw_read_header,
-    rawvideo_read_packet,
+    .name           = "rawvideo",
+    .long_name      = NULL_IF_CONFIG_SMALL("raw video format"),
+    .priv_data_size = sizeof(FFRawVideoDemuxerContext),
+    .read_header    = ff_raw_read_header,
+    .read_packet    = rawvideo_read_packet,
+    .read_seek      = rawvideo_read_seek,
+    .flags= AVFMT_GENERIC_INDEX,
     .extensions = "yuv,cif,qcif,rgb",
     .value = CODEC_ID_RAWVIDEO,
-    .read_seek = rawvideo_read_seek,
+    .priv_class = &ff_rawvideo_demuxer_class,
 };

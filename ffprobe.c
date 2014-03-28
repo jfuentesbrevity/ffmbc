@@ -1,5 +1,5 @@
 /*
- * FFprobe : Simple Media Prober based on the FFmpeg libraries
+ * ffprobe : Simple Media Prober based on the FFmpeg libraries
  * Copyright (c) 2007-2010 Stefano Sabatini
  *
  * This file is part of FFmpeg.
@@ -23,12 +23,13 @@
 
 #include "libavformat/avformat.h"
 #include "libavcodec/avcodec.h"
-#include "libavcodec/opt.h"
+#include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/dict.h"
 #include "libavdevice/avdevice.h"
 #include "cmdutils.h"
 
-const char program_name[] = "FFprobe";
+const char program_name[] = "ffprobe";
 const int program_birth_year = 2007;
 
 static int do_show_format  = 0;
@@ -141,6 +142,7 @@ static void show_packet(AVFormatContext *fmt_ctx, AVPacket *pkt)
     printf("pos=%"PRId64"\n"   , pkt->pos);
     printf("flags=%c\n"        , pkt->flags & AV_PKT_FLAG_KEY ? 'K' : '_');
     printf("[/PACKET]\n");
+    fflush(stdout);
 }
 
 static void show_packets(AVFormatContext *fmt_ctx)
@@ -153,41 +155,13 @@ static void show_packets(AVFormatContext *fmt_ctx)
         show_packet(fmt_ctx, &pkt);
 }
 
-static void show_metadata(AVMetadata *metadata)
-{
-    AVMetadataTag *tag = NULL;
-    int i, j;
-
-    if (!metadata)
-        return;
-
-    while ((tag = av_metadata_get(metadata, "", tag, AV_METADATA_IGNORE_SUFFIX))) {
-        printf("TAG:%s=", tag->key);
-        if (tag->type == METADATA_BYTEARRAY) {
-            int size = FFMIN(tag->len, 16);
-            for (i = 0; i < size; i++) {
-                int c = tag->value[i];
-                if (c < ' ' || c > '~')
-                    c = '.';
-                printf("%c", c);
-            }
-            printf("\n");
-        } else {
-            printf("%s\n", tag->value);
-        }
-        for (j = 0; tag->attributes && j < tag->attributes->count; j++) {
-            printf("  %s=%s\n", tag->attributes->elems[j].key,
-                   tag->attributes->elems[j].value);
-        }
-    }
-}
-
 static void show_stream(AVFormatContext *fmt_ctx, int stream_idx)
 {
     AVStream *stream = fmt_ctx->streams[stream_idx];
     AVCodecContext *dec_ctx;
     AVCodec *dec;
     char val_str[128];
+    AVDictionaryEntry *tag = NULL;
     AVRational display_aspect_ratio;
 
     printf("[STREAM]\n");
@@ -239,10 +213,13 @@ static void show_stream(AVFormatContext *fmt_ctx, int stream_idx)
             }
             printf("pix_fmt=%s\n",                 dec_ctx->pix_fmt != PIX_FMT_NONE ?
                    av_pix_fmt_descriptors[dec_ctx->pix_fmt].name : "unknown");
+            printf("level=%d\n",                   dec_ctx->level);
             if (dec_ctx->interlaced > 0)
-                printf("interlaced=%s\n", dec_ctx->interlaced == 2 ? "tff" : "bff");
+                printf("interlaced=%s\n", dec_ctx->interlaced == 1 ? "tff" : "bff");
             else
                 printf("progressive\n");
+            printf("bit_rate=%s\n", value_string(val_str, sizeof(val_str), dec_ctx->bit_rate,
+                                                 unit_bit_per_second_str));
             break;
 
         case AVMEDIA_TYPE_AUDIO:
@@ -269,13 +246,16 @@ static void show_stream(AVFormatContext *fmt_ctx, int stream_idx)
     if (stream->nb_frames)
         printf("nb_frames=%"PRId64"\n",    stream->nb_frames);
 
-    show_metadata(stream->metadata);
+    while ((tag = av_dict_get(stream->metadata, "", tag, AV_DICT_IGNORE_SUFFIX)))
+        printf("TAG:%s=%s\n", tag->key, tag->value);
 
     printf("[/STREAM]\n");
+    fflush(stdout);
 }
 
 static void show_format(AVFormatContext *fmt_ctx)
 {
+    AVDictionaryEntry *tag = NULL;
     char val_str[128];
 
     printf("[FORMAT]\n");
@@ -293,23 +273,28 @@ static void show_format(AVFormatContext *fmt_ctx)
     printf("bit_rate=%s\n",         value_string(val_str, sizeof(val_str), fmt_ctx->bit_rate,
                                                  unit_bit_per_second_str));
 
-    show_metadata(fmt_ctx->metadata);
+    while ((tag = av_dict_get(fmt_ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX)))
+        printf("TAG:%s=%s\n", tag->key, tag->value);
 
     printf("[/FORMAT]\n");
+    fflush(stdout);
 }
 
 static int open_input_file(AVFormatContext **fmt_ctx_ptr, const char *filename)
 {
     int err, i;
-    AVFormatContext *fmt_ctx;
+    AVFormatContext *fmt_ctx = NULL;
+    AVDictionaryEntry *t;
 
-    fmt_ctx = avformat_alloc_context();
-    set_context_opts(fmt_ctx, AV_OPT_FLAG_DECODING_PARAM, NULL);
-
-    if ((err = av_open_input_file(&fmt_ctx, filename, iformat, 0, NULL)) < 0) {
+    if ((err = avformat_open_input(&fmt_ctx, filename, iformat, &format_opts)) < 0) {
         print_error(filename, err);
         return err;
     }
+    if ((t = av_dict_get(format_opts, "", NULL, AV_DICT_IGNORE_SUFFIX))) {
+        av_log(NULL, AV_LOG_ERROR, "Option %s not found.\n", t->key);
+        return AVERROR_OPTION_NOT_FOUND;
+    }
+
 
     /* fill the streams in the format context */
     if ((err = av_find_stream_info(fmt_ctx)) < 0) {
@@ -317,7 +302,7 @@ static int open_input_file(AVFormatContext **fmt_ctx_ptr, const char *filename)
         return err;
     }
 
-    dump_format(fmt_ctx, 0, filename, 0);
+    av_dump_format(fmt_ctx, 0, filename, 0);
 
     /* bind a decoder to each input stream */
     for (i = 0; i < fmt_ctx->nb_streams; i++) {
@@ -325,11 +310,10 @@ static int open_input_file(AVFormatContext **fmt_ctx_ptr, const char *filename)
         AVCodec *codec;
 
         if (!(codec = avcodec_find_decoder(stream->codec->codec_id))) {
-            fprintf(stderr, "Unsupported codec (id=%d) for input stream %d\n",
+            fprintf(stderr, "Unsupported codec with id %d for input stream %d\n",
                     stream->codec->codec_id, stream->index);
-        } else if (avcodec_open(stream->codec, codec) < 0) {
-            fprintf(stderr, "Error while opening codec for input stream %d\n",
-                    stream->index);
+        } else {
+            stream->codec->codec = codec;
         }
     }
 
@@ -366,16 +350,17 @@ static void show_usage(void)
     printf("\n");
 }
 
-static void opt_format(const char *arg)
+static int opt_format(const char *opt, const char *arg)
 {
     iformat = av_find_input_format(arg);
     if (!iformat) {
         fprintf(stderr, "Unknown input format: %s\n", arg);
-        exit(1);
+        return AVERROR(EINVAL);
     }
+    return 0;
 }
 
-static void opt_input_file(const char *arg)
+static int opt_input_file(const char *opt, const char *arg)
 {
     if (input_filename) {
         fprintf(stderr, "Argument '%s' provided as input filename, but '%s' was already specified.\n",
@@ -385,38 +370,31 @@ static void opt_input_file(const char *arg)
     if (!strcmp(arg, "-"))
         arg = "pipe:";
     input_filename = arg;
+    return 0;
 }
 
-static void show_help(void)
+static int opt_help(const char *opt, const char *arg)
 {
+    av_log_set_callback(log_callback_help);
     show_usage();
     show_help_options(options, "Main options:\n", 0, 0);
     printf("\n");
-    show_options("AVFormatContext", NULL, avformat_opts, AV_OPT_FLAG_DECODING_PARAM);
+    av_opt_show2(avformat_opts, NULL,
+                 AV_OPT_FLAG_DECODING_PARAM, 0);
+    return 0;
 }
 
-static void opt_pretty(void)
+static int opt_pretty(const char *opt, const char *arg)
 {
     show_value_unit              = 1;
     use_value_prefix             = 1;
     use_byte_value_binary_prefix = 1;
     use_value_sexagesimal_format = 1;
+    return 0;
 }
 
 static const OptionDef options[] = {
-    { "L", OPT_EXIT, {(void*)show_license}, "show license" },
-    { "h", OPT_EXIT, {(void*)show_help}, "show help" },
-    { "?", OPT_EXIT, {(void*)show_help}, "show help" },
-    { "help", OPT_EXIT, {(void*)show_help}, "show help" },
-    { "-help", OPT_EXIT, {(void*)show_help}, "show help" },
-    { "version", OPT_EXIT, {(void*)show_version}, "show version" },
-    { "formats", OPT_EXIT, {(void*)show_formats}, "show available formats" },
-    { "codecs", OPT_EXIT, {(void*)show_codecs}, "show available codecs" },
-    { "bsfs", OPT_EXIT, {(void*)show_bsfs}, "show available bit stream filters" },
-    { "protocols", OPT_EXIT, {(void*)show_protocols}, "show available protocols" },
-    { "filters", OPT_EXIT, {(void*)show_filters}, "show available filters" },
-    { "pix_fmts", OPT_EXIT, {(void*)show_pix_fmts}, "show available pixel formats" },
-    { "loglevel", HAS_ARG | OPT_FUNC2, {(void*)opt_loglevel}, "set libav* logging level", "loglevel" },
+#include "cmdutils_common_opts.h"
     { "f", HAS_ARG, {(void*)opt_format}, "force format", "format" },
     { "unit", OPT_BOOL, {(void*)&show_value_unit}, "show unit of the displayed values" },
     { "prefix", OPT_BOOL, {(void*)&use_value_prefix}, "use SI prefixes for the displayed values" },
@@ -429,7 +407,8 @@ static const OptionDef options[] = {
     { "show_format",  OPT_BOOL, {(void*)&do_show_format} , "show format/container info" },
     { "show_packets", OPT_BOOL, {(void*)&do_show_packets}, "show packets info" },
     { "show_streams", OPT_BOOL, {(void*)&do_show_streams}, "show streams info" },
-    { "default", OPT_FUNC2 | HAS_ARG | OPT_AUDIO | OPT_VIDEO | OPT_EXPERT, {(void*)opt_default}, "generic catch all option", "" },
+    { "default", HAS_ARG | OPT_AUDIO | OPT_VIDEO | OPT_EXPERT, {(void*)opt_default}, "generic catch all option", "" },
+    { "i", HAS_ARG, {(void *)opt_input_file}, "read specified file", "input_file"},
     { NULL, },
 };
 
@@ -438,10 +417,10 @@ int main(int argc, char **argv)
     int ret;
 
     av_register_all();
+    init_opts();
 #if CONFIG_AVDEVICE
     avdevice_register_all();
 #endif
-    init_opts();
 
     show_banner();
     parse_options(argc, argv, options, opt_input_file);
@@ -453,9 +432,9 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    uninit_opts();
-
     ret = probe_file(input_filename);
+
+    av_free(avformat_opts);
 
     return ret;
 }

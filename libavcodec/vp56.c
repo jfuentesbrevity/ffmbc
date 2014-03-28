@@ -1,7 +1,4 @@
-/**
- * @file
- * VP5 and VP6 compatible video decoder (common features)
- *
+/*
  * Copyright (C) 2006  Aurelien Jacobs <aurel@gnuage.org>
  *
  * This file is part of FFmpeg.
@@ -19,6 +16,11 @@
  * You should have received a copy of the GNU General Public
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+/**
+ * @file
+ * VP5 and VP6 compatible video decoder (common features)
  */
 
 #include "avcodec.h"
@@ -526,12 +528,12 @@ int ff_vp56_decode_frame(AVCodecContext *avctx, void *data, int *data_size,
         }
 
         if (p->key_frame) {
-            p->pict_type = FF_I_TYPE;
+            p->pict_type = AV_PICTURE_TYPE_I;
             s->default_models_init(s);
             for (block=0; block<s->mb_height*s->mb_width; block++)
                 s->macroblocks[block].type = VP56_MB_INTRA;
         } else {
-            p->pict_type = FF_P_TYPE;
+            p->pict_type = AV_PICTURE_TYPE_P;
             vp56_parse_mb_type_models(s);
             s->parse_vector_models(s);
             s->mb_type = VP56_MB_INTER_NOVEC_PF;
@@ -653,8 +655,10 @@ av_cold void ff_vp56_init(AVCodecContext *avctx, int flip, int has_alpha)
     ff_vp56dsp_init(&s->vp56dsp, avctx->codec->id);
     ff_init_scantable(s->dsp.idct_permutation, &s->scantable,ff_zigzag_direct);
 
-    for (i=0; i<4; i++)
+    for (i=0; i<4; i++) {
         s->framep[i] = &s->frames[i];
+        avcodec_get_frame_defaults(&s->frames[i]);
+    }
     s->framep[VP56_FRAME_UNUSED] = s->framep[VP56_FRAME_GOLDEN];
     s->framep[VP56_FRAME_UNUSED2] = s->framep[VP56_FRAME_GOLDEN2];
     s->edge_emu_buffer_alloc = NULL;

@@ -10,17 +10,6 @@ all: all-yes
 .SUFFIXES:
 
 ifndef SUBDIR
-vpath %.c   $(SRC_DIR)
-vpath %.h   $(SRC_DIR)
-vpath %.S   $(SRC_DIR)
-vpath %.asm $(SRC_DIR)
-vpath %.v   $(SRC_DIR)
-
-ifeq ($(SRC_DIR),$(SRC_PATH_BARE))
-BUILD_ROOT_REL = .
-else
-BUILD_ROOT_REL = ..
-endif
 
 ifndef V
 Q      = @
@@ -37,25 +26,31 @@ endif
 
 ALLFFLIBS = avcodec avdevice avfilter avformat avutil postproc swscale
 
-IFLAGS   := -I$(BUILD_ROOT_REL) -I$(SRC_PATH)
-CPPFLAGS := $(IFLAGS) $(CPPFLAGS)
-CFLAGS   += $(ECFLAGS)
-YASMFLAGS += $(IFLAGS) -Pconfig.asm
-
+# NASM requires -I path terminated with /
+IFLAGS     := -I. -I$(SRC_PATH)/
+CPPFLAGS   := $(IFLAGS) $(CPPFLAGS)
+CFLAGS     += $(ECFLAGS)
+CCFLAGS     = $(CFLAGS)
+YASMFLAGS  += $(IFLAGS) -Pconfig.asm
 HOSTCFLAGS += $(IFLAGS)
+LDFLAGS    := $(ALLFFLIBS:%=-Llib%) $(LDFLAGS)
+
+define COMPILE
+       $($(1)DEP)
+       $($(1)) $(CPPFLAGS) $($(1)FLAGS) $($(1)_DEPFLAGS) -c $($(1)_O) $<
+endef
+
+COMPILE_C = $(call COMPILE,CC)
+COMPILE_S = $(call COMPILE,AS)
 
 %.o: %.c
-	$(CCDEP)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(CC_DEPFLAGS) -c $(CC_O) $<
+	$(COMPILE_C)
 
 %.o: %.S
-	$(ASDEP)
-	$(AS) $(CPPFLAGS) $(ASFLAGS) $(AS_DEPFLAGS) -c -o $@ $<
+	$(COMPILE_S)
 
 %.ho: %.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused -c -o $@ -x c $<
-
-%$(EXESUF): %.c
 
 %.ver: %.v
 	$(Q)sed 's/$$MAJOR/$($(basename $(@F))_VERSION_MAJOR)/' $^ > $@
@@ -65,13 +60,6 @@ HOSTCFLAGS += $(IFLAGS)
 # Dummy rule to stop make trying to rebuild removed or renamed headers
 %.h:
 	@:
-
-install: install-libs install-headers
-install-libs: install-libs-yes
-
-uninstall: uninstall-libs uninstall-headers
-
-.PHONY: all depend dep *clean install* uninstall* examples testprogs
 
 # Disable suffix rules.  Most of the builtin rules are suffix rules,
 # so this saves some time on slow systems.
@@ -83,27 +71,30 @@ endif
 
 OBJS-$(HAVE_MMX) +=  $(MMX-OBJS-yes)
 
-CFLAGS    += $(CFLAGS-yes)
 OBJS      += $(OBJS-yes)
 FFLIBS    := $(FFLIBS-yes) $(FFLIBS)
 TESTPROGS += $(TESTPROGS-yes)
 
-FFEXTRALIBS := $(addprefix -l,$(addsuffix $(BUILDSUF),$(FFLIBS))) $(EXTRALIBS)
-FFLDFLAGS   := $(addprefix -L$(BUILD_ROOT)/lib,$(ALLFFLIBS)) $(LDFLAGS)
+FFEXTRALIBS := $(FFLIBS:%=-l%$(BUILDSUF)) $(EXTRALIBS)
 
-EXAMPLES  := $(addprefix $(SUBDIR),$(addsuffix -example$(EXESUF),$(EXAMPLES)))
-OBJS      := $(addprefix $(SUBDIR),$(sort $(OBJS)))
-TESTOBJS  := $(addprefix $(SUBDIR),$(TESTOBJS))
-TESTPROGS := $(addprefix $(SUBDIR),$(addsuffix -test$(EXESUF),$(TESTPROGS)))
-HOSTOBJS  := $(addprefix $(SUBDIR),$(addsuffix .o,$(HOSTPROGS)))
-HOSTPROGS := $(addprefix $(SUBDIR),$(addsuffix $(HOSTEXESUF),$(HOSTPROGS)))
+EXAMPLES  := $(EXAMPLES:%=$(SUBDIR)%-example$(EXESUF))
+OBJS      := $(sort $(OBJS:%=$(SUBDIR)%))
+TESTOBJS  := $(TESTOBJS:%=$(SUBDIR)%) $(TESTPROGS:%=$(SUBDIR)%-test.o)
+TESTPROGS := $(TESTPROGS:%=$(SUBDIR)%-test$(EXESUF))
+HOSTOBJS  := $(HOSTPROGS:%=$(SUBDIR)%.o)
+HOSTPROGS := $(HOSTPROGS:%=$(SUBDIR)%$(HOSTEXESUF))
+TOOLS     += $(TOOLS-yes)
+TOOLOBJS  := $(TOOLS:%=tools/%.o)
+TOOLS     := $(TOOLS:%=tools/%$(EXESUF))
 
-DEP_LIBS := $(foreach NAME,$(FFLIBS),$(BUILD_ROOT_REL)/lib$(NAME)/$($(CONFIG_SHARED:yes=S)LIBNAME))
+DEP_LIBS := $(foreach NAME,$(FFLIBS),lib$(NAME)/$($(CONFIG_SHARED:yes=S)LIBNAME))
 
 ALLHEADERS := $(subst $(SRC_DIR)/,$(SUBDIR),$(wildcard $(SRC_DIR)/*.h $(SRC_DIR)/$(ARCH)/*.h))
-SKIPHEADERS += $(addprefix $(ARCH)/,$(ARCH_HEADERS))
-SKIPHEADERS := $(addprefix $(SUBDIR),$(SKIPHEADERS-) $(SKIPHEADERS))
+SKIPHEADERS += $(ARCH_HEADERS:%=$(ARCH)/%) $(SKIPHEADERS-)
+SKIPHEADERS := $(SKIPHEADERS:%=$(SUBDIR)%)
 checkheaders: $(filter-out $(SKIPHEADERS:.h=.ho),$(ALLHEADERS:.h=.ho))
+
+alltools: $(TOOLS)
 
 $(HOSTOBJS): %.o: %.c
 	$(HOSTCC) $(HOSTCFLAGS) -c -o $@ $<
@@ -111,8 +102,15 @@ $(HOSTOBJS): %.o: %.c
 $(HOSTPROGS): %$(HOSTEXESUF): %.o
 	$(HOSTCC) $(HOSTLDFLAGS) -o $@ $< $(HOSTLIBS)
 
+$(OBJS):     | $(sort $(dir $(OBJS)))
+$(HOSTOBJS): | $(sort $(dir $(HOSTOBJS)))
+$(TESTOBJS): | $(sort $(dir $(TESTOBJS)))
+$(TOOLOBJS): | tools
+
+OBJDIRS := $(OBJDIRS) $(dir $(OBJS) $(HOSTOBJS) $(TESTOBJS))
+
 CLEANSUFFIXES     = *.d *.o *~ *.ho *.map *.ver
 DISTCLEANSUFFIXES = *.pc
 LIBSUFFIXES       = *.a *.lib *.so *.so.* *.dylib *.dll *.def *.dll.a *.exp
 
--include $(wildcard $(OBJS:.o=.d))
+-include $(wildcard $(OBJS:.o=.d) $(TESTOBJS:.o=.d))

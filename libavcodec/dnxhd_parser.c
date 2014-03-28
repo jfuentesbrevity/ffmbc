@@ -26,7 +26,7 @@
 
 #include "parser.h"
 
-#define DNXHD_HEADER_PREFIX     0x000002800100
+#define DNXHD_HEADER_PREFIX 0x000002800100
 
 static int dnxhd_find_frame_end(ParseContext *pc,
                                 const uint8_t *buf, int buf_size)

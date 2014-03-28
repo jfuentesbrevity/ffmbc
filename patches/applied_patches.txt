@@ -1,0 +1,13 @@
+not
+dnxhd_added_bitrates.patch
+compression_id_fix.patch
+
+done
+raw_rgb48.patch
+version.patch
+video_stream_bitrate.patch
+lxfdec.patch
+img2_start_frame_opt.patch
+
+doesn't
+mxf_opatom_audio

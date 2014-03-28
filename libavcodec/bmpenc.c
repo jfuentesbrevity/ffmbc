@@ -74,7 +74,7 @@ static int bmp_encode_frame(AVCodecContext *avctx, unsigned char *buf, int buf_s
     uint8_t *ptr;
     unsigned char* buf0 = buf;
     *p = *pict;
-    p->pict_type= FF_I_TYPE;
+    p->pict_type= AV_PICTURE_TYPE_I;
     p->key_frame= 1;
     switch (avctx->pix_fmt) {
     case PIX_FMT_RGB565:
@@ -157,6 +157,7 @@ AVCodec ff_bmp_encoder = {
     bmp_encode_init,
     bmp_encode_frame,
     NULL, //encode_end,
+    .capabilities = CODEC_CAP_LOSSLESS,
     .pix_fmts = (const enum PixelFormat[]){
         PIX_FMT_BGR24,
         PIX_FMT_RGB555, PIX_FMT_RGB565,

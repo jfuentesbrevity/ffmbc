@@ -83,7 +83,7 @@
 /** Maximum sharpening factor
  *
  * The specification says 0.8, which should be 13107, but the reference C code
- * uses 13017 instead. (Amusingly the same applies to SHARP_MAX in g729dec.c.)
+ * uses 13017 instead. (Amusingly the same applies to SHARP_MAX in bitexact G.729.)
  */
 #define SHARP_MAX 0.79449462890625
 
@@ -204,7 +204,7 @@ static enum Mode unpack_bitstream(AMRContext *p, const uint8_t *buf,
 }
 
 
-/// @defgroup amr_lpc_decoding AMR pitch LPC coefficient decoding functions
+/// @name AMR pitch LPC coefficient decoding functions
 /// @{
 
 /**
@@ -255,7 +255,7 @@ static void lsf2lsp_for_mode12k2(AMRContext *p, double lsp[LP_FILTER_ORDER],
     }
 
     if (update)
-        memcpy(p->prev_lsf_r, lsf_r, LP_FILTER_ORDER * sizeof(float));
+        memcpy(p->prev_lsf_r, lsf_r, LP_FILTER_ORDER * sizeof(*lsf_r));
 
     for (i = 0; i < LP_FILTER_ORDER; i++)
         lsf_q[i] = lsf_r[i] * (LSF_R_FAC / 8000.0) + lsf_no_r[i] * (1.0 / 8000.0);
@@ -341,7 +341,7 @@ static void lsf2lsp_3(AMRContext *p)
 /// @}
 
 
-/// @defgroup amr_pitch_vector_decoding AMR pitch vector decoding functions
+/// @name AMR pitch vector decoding functions
 /// @{
 
 /**
@@ -403,7 +403,7 @@ static void decode_pitch_vector(AMRContext *p,
 /// @}
 
 
-/// @defgroup amr_algebraic_code_book AMR algebraic code book (fixed) vector decoding functions
+/// @name AMR algebraic code book (fixed) vector decoding functions
 /// @{
 
 /**
@@ -547,7 +547,7 @@ static void pitch_sharpening(AMRContext *p, int subframe, enum Mode mode,
 /// @}
 
 
-/// @defgroup amr_gain_decoding AMR gain decoding functions
+/// @name AMR gain decoding functions
 /// @{
 
 /**
@@ -633,7 +633,7 @@ static void decode_gains(AMRContext *p, const AMRNBSubframe *amr_subframe,
 /// @}
 
 
-/// @defgroup amr_pre_processing AMR pre-processing functions
+/// @name AMR preprocessing functions
 /// @{
 
 /**
@@ -751,7 +751,7 @@ static const float *anti_sparseness(AMRContext *p, AMRFixed *fixed_sparse,
 /// @}
 
 
-/// @defgroup amr_synthesis AMR synthesis functions
+/// @name AMR synthesis functions
 /// @{
 
 /**
@@ -812,7 +812,7 @@ static int synthesis(AMRContext *p, float *lpc,
 /// @}
 
 
-/// @defgroup amr_update AMR update functions
+/// @name AMR update functions
 /// @{
 
 /**
@@ -837,7 +837,7 @@ static void update_state(AMRContext *p)
 /// @}
 
 
-/// @defgroup amr_postproc AMR Post processing functions
+/// @name AMR Postprocessing functions
 /// @{
 
 /**
@@ -936,7 +936,8 @@ static int amrnb_decode_frame(AVCodecContext *avctx, void *data, int *data_size,
 
     p->cur_frame_mode = unpack_bitstream(p, buf, buf_size);
     if (p->cur_frame_mode == MODE_DTX) {
-        av_log_missing_feature(avctx, "dtx mode", 1);
+        av_log_missing_feature(avctx, "dtx mode", 0);
+        av_log(avctx, AV_LOG_INFO, "Note: libopencore_amrnb supports dtx\n");
         return -1;
     }
 
@@ -1044,5 +1045,5 @@ AVCodec ff_amrnb_decoder = {
     .init           = amrnb_decode_init,
     .decode         = amrnb_decode_frame,
     .long_name      = NULL_IF_CONFIG_SMALL("Adaptive Multi-Rate NarrowBand"),
-    .sample_fmts    = (enum AVSampleFormat[]){AV_SAMPLE_FMT_FLT,AV_SAMPLE_FMT_NONE},
+    .sample_fmts    = (const enum AVSampleFormat[]){AV_SAMPLE_FMT_FLT,AV_SAMPLE_FMT_NONE},
 };

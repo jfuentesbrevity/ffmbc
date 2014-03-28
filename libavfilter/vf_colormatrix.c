@@ -12,7 +12,8 @@
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
- * Free Software Foundation; version 2 of the License.
+ * Free Software Foundation; either version 2 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but
  * OUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
@@ -30,8 +31,7 @@
 #include "libavutil/pixdesc.h"
 
 #define NS(n) n < 0 ? (int)(n*65536.0-0.5+DBL_EPSILON) : (int)(n*65536.0+0.5)
-#define CB(n) FFMAX(FFMIN((n),255),0)
-#define SIMD_SCALE(n) n >= 65536 ? (n+2)>>2 : n >= 32768 ? (n+1)>>1 : n;
+#define CB(n) av_clip_uint8(n)
 
 static const double yuv_coeff[4][3][3] = {
     { { +0.7152, +0.0722, +0.2126 }, // Rec.709 (0)
@@ -173,7 +173,10 @@ static av_cold int init(AVFilterContext *ctx, const char *args, void *opaque)
 {
     ColorMatrixContext *color = ctx->priv;
 
+    if (!args)
+        goto usage;
     if (sscanf(args, "%255[^:]:%255[^:]", color->src, color->dst) != 2) {
+    usage:
         av_log(ctx, AV_LOG_ERROR, "usage: <src>:<dst>\n");
         av_log(ctx, AV_LOG_ERROR, "possible options: bt709,bt601,smpte240m,fcc\n");
         return -1;
@@ -338,7 +341,7 @@ static int query_formats(AVFilterContext *ctx)
         PIX_FMT_NONE
     };
 
-    avfilter_set_common_formats(ctx, avfilter_make_format_list(pix_fmts));
+    avfilter_set_common_pixel_formats(ctx, avfilter_make_format_list(pix_fmts));
 
     return 0;
 }

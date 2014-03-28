@@ -72,10 +72,10 @@ int ff_wmv2_encode_picture_header(MpegEncContext * s, int picture_number)
     Wmv2Context * const w= (Wmv2Context*)s;
 
     put_bits(&s->pb, 1, s->pict_type - 1);
-    if(s->pict_type == FF_I_TYPE){
+    if(s->pict_type == AV_PICTURE_TYPE_I){
         put_bits(&s->pb, 7, 0);
     }
-    put_bits(&s->pb, 5, s->qp);
+    put_bits(&s->pb, 5, s->qscale);
 
     s->dc_table_index = 1;
     s->mv_table_index = 1; /* only if P frame */
@@ -87,7 +87,7 @@ int ff_wmv2_encode_picture_header(MpegEncContext * s, int picture_number)
 
     assert(s->flipflop_rounding);
 
-    if (s->pict_type == FF_I_TYPE) {
+    if (s->pict_type == AV_PICTURE_TYPE_I) {
         assert(s->no_rounding==1);
         if(w->j_type_bit) put_bits(&s->pb, 1, w->j_type);
 
@@ -107,10 +107,10 @@ int ff_wmv2_encode_picture_header(MpegEncContext * s, int picture_number)
         put_bits(&s->pb, 2, SKIP_TYPE_NONE);
 
         ff_msmpeg4_code012(&s->pb, cbp_index=0);
-        if(s->qp <= 10){
+        if(s->qscale <= 10){
             int map[3]= {0,2,1};
             w->cbp_table_index= map[cbp_index];
-        }else if(s->qp <= 20){
+        }else if(s->qscale <= 20){
             int map[3]= {1,0,2};
             w->cbp_table_index= map[cbp_index];
         }else{
@@ -191,7 +191,7 @@ void ff_wmv2_encode_mb(MpegEncContext * s,
             coded_cbp |= val << (5 - i);
         }
 
-        if (s->pict_type == FF_I_TYPE) {
+        if (s->pict_type == AV_PICTURE_TYPE_I) {
             put_bits(&s->pb,
                      ff_msmp4_mb_i_table[coded_cbp][1], ff_msmp4_mb_i_table[coded_cbp][0]);
         } else {

@@ -21,6 +21,7 @@
  */
 
 #include "libavutil/fifo.h"
+#include "libavutil/mathematics.h"
 #include "avformat.h"
 #include "audiointerleave.h"
 #include "internal.h"
@@ -69,18 +70,21 @@ int ff_audio_interleave_init(AVFormatContext *s,
     return 0;
 }
 
-static int ff_interleave_new_audio_packet(AVFormatContext *s, AVPacket *pkt,
+int ff_audio_interleave_new_packet(AVFormatContext *s, AVPacket *pkt,
                                    int stream_index, int flush)
 {
     AVStream *st = s->streams[stream_index];
     AudioInterleaveContext *aic = st->priv_data;
+    int frame_size = *aic->samples * aic->sample_size;
 
-    int size = FFMIN(av_fifo_size(aic->fifo), *aic->samples * aic->sample_size);
-    if (!size || (!flush && size == av_fifo_size(aic->fifo)))
+    int size = FFMIN(av_fifo_size(aic->fifo), frame_size);
+    if ((flush != 2 && !size) || (!flush && size < frame_size))
         return 0;
 
-    av_new_packet(pkt, size);
+    av_new_packet(pkt, frame_size);
     av_fifo_generic_read(aic->fifo, pkt->data, size, NULL);
+    if (size < pkt->size)
+        memset(pkt->data + size, 0, pkt->size - size);
 
     pkt->dts = pkt->pts = aic->dts;
     pkt->duration = av_rescale_q(*aic->samples, st->time_base, aic->time_base);
@@ -91,7 +95,7 @@ static int ff_interleave_new_audio_packet(AVFormatContext *s, AVPacket *pkt,
     if (!*aic->samples)
         aic->samples = aic->samples_per_frame;
 
-    return size;
+    return frame_size;
 }
 
 int ff_audio_rechunk_interleave(AVFormatContext *s, AVPacket *out, AVPacket *pkt, int flush,
@@ -124,7 +128,7 @@ int ff_audio_rechunk_interleave(AVFormatContext *s, AVPacket *out, AVPacket *pkt
         AVStream *st = s->streams[i];
         if (st->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
             AVPacket new_pkt;
-            while (ff_interleave_new_audio_packet(s, &new_pkt, i, flush))
+            while (ff_audio_interleave_new_packet(s, &new_pkt, i, flush))
                 ff_interleave_add_packet(s, &new_pkt, compare_ts);
         }
     }

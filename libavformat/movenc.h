@@ -44,6 +44,7 @@ typedef struct MOVIentry {
     unsigned int size;
     uint64_t     pos;
     unsigned int samplesInChunk;
+    unsigned int chunkNum;              ///< Chunk number if the current entry is a chunk start otherwise 0
     unsigned int entries;
     int          cts;
     int64_t      dts;
@@ -73,6 +74,7 @@ typedef struct MOVIndex {
     uint64_t    time;
     long        sampleCount;
     long        sampleSize;
+    long        chunkCount;
     int         hasKeyframes;
 #define MOV_TRACK_CTTS         0x0001
 #define MOV_TRACK_STPS         0x0002
@@ -110,7 +112,7 @@ typedef struct MOVIndex {
 } MOVTrack;
 
 typedef struct MOVMuxContext {
-    AVClass *av_class;
+    const AVClass *av_class;
     int     mode;
     int64_t time;
     int     nb_streams;
@@ -120,12 +122,17 @@ typedef struct MOVMuxContext {
     int64_t mdat_pos;
     uint64_t mdat_size;
     MOVTrack *tracks;
+
+    int flags;
+    int rtp_flags;
     char *faststart;
     int free_size;    ///< 'free' atom size place before 'mdat' atom
     int64_t free_pos; ///< position of the 'free' atom
     int stco_offset;  ///< value used to offset stco values
     int overwrite;    ///< overwrite output file to rewrite header at the front
 } MOVMuxContext;
+
+#define FF_MOV_FLAG_RTP_HINT 1
 
 int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt);
 

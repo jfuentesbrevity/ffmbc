@@ -11,16 +11,13 @@ set -e
 
 eval do_$test=y
 
-rm -f "$logfile"
-rm -f "$benchfile"
-
 do_video_filter() {
     label=$1
     filters=$2
     shift 2
-    printf '%-20s' $label >>$logfile
-    run_ffmpeg -f image2 -vcodec pgmyuv -i $raw_src $BITEXACT \
-        -vf "$filters" -vcodec rawvideo $* -f nut md5: >>$logfile
+    printf '%-20s' $label
+    run_ffmpeg $DEC_OPTS -f image2 -vcodec pgmyuv -i $raw_src    \
+        $ENC_OPTS -vf "$filters" -vcodec rawvideo $* -f nut md5:
 }
 
 do_lavfi() {
@@ -55,7 +52,7 @@ do_lavfi_pixfmts(){
     $ffmpeg -pix_fmts list 2>/dev/null | sed -ne '9,$p' | grep '^\..\.' | cut -d' ' -f2 | sort >$exclude_fmts
     $showfiltfmts scale | awk -F '[ \r]' '/^OUTPUT/{ print $3 }' | sort | comm -23 - $exclude_fmts >$out_fmts
 
-    pix_fmts=$($showfiltfmts $filter | awk -F '[ \r]' '/^INPUT/{ print $3 }' | sort | comm -12 - $out_fmts)
+    pix_fmts=$($showfiltfmts $filter $filter_args | awk -F '[ \r]' '/^INPUT/{ print $3 }' | sort | comm -12 - $out_fmts)
     for pix_fmt in $pix_fmts; do
         do_video_filter $pix_fmt "slicify=random,format=$pix_fmt,$filter=$filter_args" -pix_fmt $pix_fmt
     done
@@ -72,7 +69,7 @@ do_lavfi_pixfmts "pad"     "500:400:20:20"
 do_lavfi_pixfmts "scale"   "200:100"
 do_lavfi_pixfmts "vflip"   ""
 
-if [ -n "$do_pixdesc_be" ] || [ -n "$do_pixdesc_le" ]; then
+if [ -n "$do_pixdesc" ]; then
     pix_fmts="$($ffmpeg -pix_fmts list 2>/dev/null | sed -ne '9,$p' | grep '^IO' | cut -d' ' -f2 | sort)"
     for pix_fmt in $pix_fmts; do
         do_video_filter $pix_fmt "slicify=random,format=$pix_fmt,pixdesctest" -pix_fmt $pix_fmt

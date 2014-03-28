@@ -28,6 +28,7 @@
 #include <frei0r.h>
 #include "libavutil/avstring.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/mathematics.h"
 #include "libavutil/parseutils.h"
 #include "avfilter.h"
 
@@ -332,7 +333,7 @@ static int query_formats(AVFilterContext *ctx)
     if (!formats)
         return AVERROR(ENOMEM);
 
-    avfilter_set_common_formats(ctx, formats);
+    avfilter_set_common_pixel_formats(ctx, formats);
     return 0;
 }
 
@@ -431,6 +432,7 @@ static int source_request_frame(AVFilterLink *outlink)
 {
     Frei0rContext *frei0r = outlink->src->priv;
     AVFilterBufferRef *picref = avfilter_get_video_buffer(outlink, AV_PERM_WRITE, outlink->w, outlink->h);
+    picref->video->sample_aspect_ratio = (AVRational) {1, 1};
     picref->pts = frei0r->pts++;
     picref->pos = -1;
 

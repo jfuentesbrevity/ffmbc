@@ -20,10 +20,10 @@
  */
 
 /**
- * PCX image encoder
  * @file
+ * PCX image encoder
  * @author Daniel Verkamp
- * @sa http://www.qzx.com/pc-gpe/pcx.txt
+ * @see http://www.qzx.com/pc-gpe/pcx.txt
  */
 
 #include "avcodec.h"
@@ -108,7 +108,7 @@ static int pcx_encode_frame(AVCodecContext *avctx,
     const uint8_t *src;
 
     *pict = *(AVFrame *)data;
-    pict->pict_type = FF_I_TYPE;
+    pict->pict_type = AV_PICTURE_TYPE_I;
     pict->key_frame = 1;
 
     if (avctx->width > 65535 || avctx->height > 65535) {
@@ -203,4 +203,5 @@ AVCodec ff_pcx_encoder = {
         PIX_FMT_MONOBLACK,
         PIX_FMT_NONE},
     .long_name = NULL_IF_CONFIG_SMALL("PC Paintbrush PCX image"),
+    .capabilities = CODEC_CAP_LOSSLESS,
 };

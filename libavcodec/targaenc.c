@@ -20,6 +20,7 @@
  */
 
 #include "libavutil/intreadwrite.h"
+#include "libavutil/pixdesc.h"
 #include "avcodec.h"
 #include "rle.h"
 #include "targa.h"
@@ -90,7 +91,7 @@ static int targa_encode_frame(AVCodecContext *avctx,
         return AVERROR(EINVAL);
     }
 
-    p->pict_type= FF_I_TYPE;
+    p->pict_type= AV_PICTURE_TYPE_I;
     p->key_frame= 1;
 
     /* zero out the header and only set applicable fields */
@@ -119,7 +120,7 @@ static int targa_encode_frame(AVCodecContext *avctx,
         break;
     default:
         av_log(avctx, AV_LOG_ERROR, "Pixel format '%s' not supported.\n",
-               avcodec_get_pix_fmt_name(avctx->pix_fmt));
+               av_get_pix_fmt_name(avctx->pix_fmt));
         return AVERROR(EINVAL);
     }
     bpp = outbuf[16] >> 3;
@@ -165,6 +166,7 @@ AVCodec ff_targa_encoder = {
     .priv_data_size = sizeof(TargaContext),
     .init = targa_encode_init,
     .encode = targa_encode_frame,
+    .capabilities = CODEC_CAP_LOSSLESS,
     .pix_fmts= (const enum PixelFormat[]){PIX_FMT_BGR24, PIX_FMT_BGRA, PIX_FMT_RGB555LE, PIX_FMT_GRAY8, PIX_FMT_NONE},
     .long_name= NULL_IF_CONFIG_SMALL("Truevision Targa image"),
 };

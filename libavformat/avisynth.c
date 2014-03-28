@@ -123,6 +123,14 @@ static int avisynth_read_header(AVFormatContext *s, AVFormatParameters *ap)
                   st->codec->bit_rate = (uint64_t)stream->info.dwSampleSize * (uint64_t)stream->info.dwRate * 8 / (uint64_t)stream->info.dwScale;
                   st->codec->codec_tag = imgfmt.bmiHeader.biCompression;
                   st->codec->codec_id = ff_codec_get_id(ff_codec_bmp_tags, imgfmt.bmiHeader.biCompression);
+                  if (st->codec->codec_id == CODEC_ID_RAWVIDEO && imgfmt.bmiHeader.biCompression== BI_RGB) {
+                    st->codec->extradata = av_malloc(9 + FF_INPUT_BUFFER_PADDING_SIZE);
+                    if (st->codec->extradata) {
+                      st->codec->extradata_size = 9;
+                      memcpy(st->codec->extradata, "BottomUp", 9);
+                    }
+                  }
+
 
                   st->duration = stream->info.dwLength;
                   av_set_pts_info(st, 64, info.dwScale, info.dwRate);
@@ -209,15 +217,12 @@ static int avisynth_read_seek(AVFormatContext *s, int stream_index, int64_t pts,
 }
 
 AVInputFormat ff_avisynth_demuxer = {
-  "avs",
-  NULL_IF_CONFIG_SMALL("AVISynth"),
-  sizeof(AVISynthContext),
-  NULL,
-  avisynth_read_header,
-  avisynth_read_packet,
-  avisynth_read_close,
-  avisynth_read_seek,
-  NULL,
-  0,
-  "avs",
+    .name           = "avs",
+    .long_name      = NULL_IF_CONFIG_SMALL("AVISynth"),
+    .priv_data_size = sizeof(AVISynthContext),
+    .read_header    = avisynth_read_header,
+    .read_packet    = avisynth_read_packet,
+    .read_close     = avisynth_read_close,
+    .read_seek      = avisynth_read_seek,
+    .extensions     = "avs",
 };

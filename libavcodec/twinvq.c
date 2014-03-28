@@ -24,6 +24,7 @@
 #include "dsputil.h"
 #include "fft.h"
 #include "lsp.h"
+#include "sinewin.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -233,7 +234,7 @@ static void memset_float(float *buf, float val, int size)
  *        be a multiple of four.
  * @return the LPC value
  *
- * @todo reuse code from vorbis_dec.c: vorbis_floor0_decode
+ * @todo reuse code from Vorbis decoder: vorbis_floor0_decode
  */
 static float eval_lpc_spectrum(const float *lsp, float cos_val, int order)
 {
@@ -410,7 +411,7 @@ static inline float mulawinv(float y, float clip, float mu)
  * a*b == 200 and the nearest integer is ill-defined, use a table to emulate
  * the following broken float-based implementation used by the binary decoder:
  *
- * \code
+ * @code
  * static int very_broken_op(int a, int b)
  * {
  *    static float test; // Ugh, force gcc to do the division first...
@@ -418,7 +419,7 @@ static inline float mulawinv(float y, float clip, float mu)
  *    test = a/400.;
  *    return b * test +  0.5;
  * }
- * \endcode
+ * @endcode
  *
  * @note if this function is replaced by just ROUNDED_DIV(a*b,400.), the stddev
  * between the original file (before encoding with Yamaha encoder) and the
@@ -608,6 +609,7 @@ static void dec_lpc_spectrum_inv(TwinContext *tctx, float *lsp,
 static void imdct_and_window(TwinContext *tctx, enum FrameType ftype, int wtype,
                             float *in, float *prev, int ch)
 {
+    FFTContext *mdct = &tctx->mdct_ctx[ftype];
     const ModeTab *mtab = tctx->mtab;
     int bsize = mtab->size / mtab->fmode[ftype].sub;
     int size  = mtab->size;
@@ -640,7 +642,7 @@ static void imdct_and_window(TwinContext *tctx, enum FrameType ftype, int wtype,
 
         wsize = types_sizes[wtype_to_wsize[sub_wtype]];
 
-        ff_imdct_half(&tctx->mdct_ctx[ftype], buf1 + bsize*j, in + bsize*j);
+        mdct->imdct_half(mdct, buf1 + bsize*j, in + bsize*j);
 
         tctx->dsp.vector_fmul_window(out2,
                                      prev_buf + (bsize-wsize)/2,
@@ -936,14 +938,14 @@ static void permutate_in_line(int16_t *tab, int num_vect, int num_blocks,
 /**
  * Interpret the input data as in the following table:
  *
- * \verbatim
+ * @verbatim
  *
  * abcdefgh
  * ijklmnop
  * qrstuvw
  * x123456
  *
- * \endverbatim
+ * @endverbatim
  *
  * and transpose it, giving the output
  * aiqxbjr1cks2dlt3emu4fvn5gow6hp

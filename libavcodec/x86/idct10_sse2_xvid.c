@@ -341,7 +341,7 @@ DECLARE_ASM_CONST(16, int32_t, walkenIdctRounders)[] = {
     "movdqa   %%xmm6, 4*16("dct")     \n\t" \
     "movdqa   "SREG2", 7*16("dct")    \n\t"
 
-inline void ff_idct10_xvid_sse2(short *block)
+inline void ff_idct_10_xvid_sse2(short *block)
 {
     __asm__ volatile(
     "movq     "MANGLE(m127)", %%mm0                              \n\t"
@@ -388,4 +388,10 @@ inline void ff_idct10_xvid_sse2(short *block)
 #endif
       "%eax", "%ecx", "%edx", "%esi", "memory"
     );
+}
+
+void ff_idct_10_xvid_put_clamped_sse2(uint8_t *dest, int line_size, short *block)
+{
+    ff_idct_10_xvid_sse2(block);
+    ff_put_pixels_10_clamped_sse2(block, dest, line_size);
 }

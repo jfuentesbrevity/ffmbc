@@ -53,6 +53,7 @@ static av_cold int libopenjpeg_decode_init(AVCodecContext *avctx)
     LibOpenJPEGContext *ctx = avctx->priv_data;
 
     opj_set_default_decoder_parameters(&ctx->dec_params);
+    avcodec_get_frame_defaults(&ctx->image);
     avctx->coded_frame = &ctx->image;
     return 0;
 }
@@ -61,7 +62,7 @@ static int libopenjpeg_decode_frame(AVCodecContext *avctx,
                                     void *data, int *data_size,
                                     AVPacket *avpkt)
 {
-    const uint8_t *buf = avpkt->data;
+    uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     LibOpenJPEGContext *ctx = avctx->priv_data;
     AVFrame *picture = &ctx->image, *output = data;

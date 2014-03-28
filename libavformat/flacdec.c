@@ -40,14 +40,14 @@ static int flac_read_header(AVFormatContext *s,
     /* the parameters will be extracted from the compressed bitstream */
 
     /* if fLaC marker is not found, assume there is no header */
-    if (get_le32(s->pb) != MKTAG('f','L','a','C')) {
-        url_fseek(s->pb, -4, SEEK_CUR);
+    if (avio_rl32(s->pb) != MKTAG('f','L','a','C')) {
+        avio_seek(s->pb, -4, SEEK_CUR);
         return 0;
     }
 
     /* process metadata blocks */
     while (!url_feof(s->pb) && !metadata_last) {
-        get_buffer(s->pb, header, 4);
+        avio_read(s->pb, header, 4);
         ff_flac_parse_block_header(header, &metadata_last, &metadata_type,
                                    &metadata_size);
         switch (metadata_type) {
@@ -58,14 +58,14 @@ static int flac_read_header(AVFormatContext *s,
             if (!buffer) {
                 return AVERROR(ENOMEM);
             }
-            if (get_buffer(s->pb, buffer, metadata_size) != metadata_size) {
+            if (avio_read(s->pb, buffer, metadata_size) != metadata_size) {
                 av_freep(&buffer);
                 return AVERROR(EIO);
             }
             break;
         /* skip metadata block for unsupported types */
         default:
-            ret = url_fseek(s->pb, metadata_size, SEEK_CUR);
+            ret = avio_skip(s->pb, metadata_size);
             if (ret < 0)
                 return ret;
         }
@@ -124,12 +124,11 @@ static int flac_probe(AVProbeData *p)
 }
 
 AVInputFormat ff_flac_demuxer = {
-    "flac",
-    NULL_IF_CONFIG_SMALL("raw FLAC"),
-    0,
-    flac_probe,
-    flac_read_header,
-    ff_raw_read_partial_packet,
+    .name           = "flac",
+    .long_name      = NULL_IF_CONFIG_SMALL("raw FLAC"),
+    .read_probe     = flac_probe,
+    .read_header    = flac_read_header,
+    .read_packet    = ff_raw_read_partial_packet,
     .flags= AVFMT_GENERIC_INDEX,
     .extensions = "flac",
     .value = CODEC_ID_FLAC,

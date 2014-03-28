@@ -71,7 +71,7 @@ static av_cold int pcm_encode_close(AVCodecContext *avctx)
  * @param offset Sample value offset
  */
 #define ENCODE(type, endian, src, dst, n, shift, offset) \
-    samples_##type = (type*)src; \
+    samples_##type = (const type*) src; \
     for(;n>0;n--) { \
         register type v = (*samples_##type++ >> shift) + offset; \
         bytestream_put_##endian(&dst, v); \
@@ -118,6 +118,15 @@ static int pcm_encode_frame(AVCodecContext *avctx,
         break;
     case CODEC_ID_PCM_U24BE:
         ENCODE(uint32_t, be24, samples, dst, n, 8, 0x800000)
+        break;
+    case CODEC_ID_PCM_S24DAUD:
+        for(;n>0;n--) {
+            uint32_t tmp = av_reverse[(*samples >> 8) & 0xff] +
+                           (av_reverse[*samples & 0xff] << 8);
+            tmp <<= 4; // sync flags would go here
+            bytestream_put_be24(&dst, tmp);
+            samples++;
+        }
         break;
     case CODEC_ID_PCM_U16LE:
         ENCODE(uint16_t, le16, samples, dst, n, 0, 0x8000)
@@ -322,6 +331,14 @@ static int pcm_decode_frame(AVCodecContext *avctx,
     case CODEC_ID_PCM_U24BE:
         DECODE(uint32_t, be24, src, samples, n, 8, 0x800000)
         break;
+    case CODEC_ID_PCM_S24DAUD:
+        for(;n>0;n--) {
+          uint32_t v = bytestream_get_be24(&src);
+          v >>= 4; // sync flags are here
+          *samples++ = av_reverse[(v >> 8) & 0xff] +
+                       (av_reverse[v & 0xff] << 8);
+        }
+        break;
     case CODEC_ID_PCM_S16LE_PLANAR:
         n /= avctx->channels;
         for(c=0;c<avctx->channels;c++)
@@ -423,7 +440,6 @@ static int pcm_decode_frame(AVCodecContext *avctx,
         default:
             av_log(avctx, AV_LOG_ERROR, "PCM DVD unsupported sample depth\n");
             return -1;
-            break;
         }
         samples = (short *) dst_int32_t;
         break;
@@ -503,6 +519,7 @@ PCM_CODEC  (CODEC_ID_PCM_S16BE, AV_SAMPLE_FMT_S16, pcm_s16be, "PCM signed 16-bit
 PCM_CODEC  (CODEC_ID_PCM_S16LE, AV_SAMPLE_FMT_S16, pcm_s16le, "PCM signed 16-bit little-endian");
 PCM_DECODER(CODEC_ID_PCM_S16LE_PLANAR, AV_SAMPLE_FMT_S16, pcm_s16le_planar, "PCM 16-bit little-endian planar");
 PCM_CODEC  (CODEC_ID_PCM_S24BE, AV_SAMPLE_FMT_S32, pcm_s24be, "PCM signed 24-bit big-endian");
+PCM_CODEC  (CODEC_ID_PCM_S24DAUD, AV_SAMPLE_FMT_S16,  pcm_s24daud, "PCM D-Cinema audio signed 24-bit");
 PCM_CODEC  (CODEC_ID_PCM_S24LE, AV_SAMPLE_FMT_S32, pcm_s24le, "PCM signed 24-bit little-endian");
 PCM_CODEC  (CODEC_ID_PCM_S32BE, AV_SAMPLE_FMT_S32, pcm_s32be, "PCM signed 32-bit big-endian");
 PCM_CODEC  (CODEC_ID_PCM_S32LE, AV_SAMPLE_FMT_S32, pcm_s32le, "PCM signed 32-bit little-endian");

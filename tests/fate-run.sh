@@ -15,6 +15,8 @@ command=$5
 cmp=${6:-diff}
 ref=${7:-"${base}/ref/fate/${test}"}
 fuzz=$8
+threads=${9:-1}
+thread_type=${10:-3}
 
 outdir="tests/data/fate"
 outfile="${outdir}/${test}"
@@ -48,7 +50,7 @@ run(){
 }
 
 ffmpeg(){
-    run ffmbc -v 0 "$@"
+    run ffmbc -v 0 -threads $threads -thread_type $thread_type "$@"
 }
 
 framecrc(){
@@ -74,10 +76,7 @@ pcm(){
 regtest(){
     t="${test#$2-}"
     ref=${base}/ref/$2/$t
-    cleanfiles="$cleanfiles $outfile $errfile"
-    outfile=tests/data/regression/$2/$t
-    errfile=tests/data/$t.$2.err
-    ${base}/${1}-regression.sh $t $2 $3 "$target_exec" "$target_path"
+    ${base}/${1}-regression.sh $t $2 $3 "$target_exec" "$target_path" "$threads" "$thread_type"
 }
 
 codectest(){
@@ -105,7 +104,11 @@ seektest(){
                  file=$(echo tests/data/$d/$file)
                  ;;
     esac
-    $target_exec $target_path/tests/seek_test $target_path/$file
+    case $t in
+        roq*) fps=30 ;;
+        *)    fps=25 ;;
+    esac
+    $target_exec $target_path/libavformat/seek-test $target_path/$file $fps
 }
 
 mkdir -p "$outdir"
@@ -124,6 +127,7 @@ if test -e "$ref"; then
         diff)   diff -u -w "$ref" "$outfile"            >$cmpfile ;;
         oneoff) oneoff     "$ref" "$outfile" "$fuzz"    >$cmpfile ;;
         stddev) stddev     "$ref" "$outfile" "$fuzz"    >$cmpfile ;;
+        null)   cat               "$outfile"            >$cmpfile ;;
     esac
     cmperr=$?
     test $err = 0 && err=$cmperr

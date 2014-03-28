@@ -1,5 +1,4 @@
 /*
- * ID3v2 header parser
  * Copyright (c) 2003 Fabrice Bellard
  *
  * This file is part of FFmpeg.
@@ -19,11 +18,20 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+/**
+ * @file
+ * ID3v2 header parser
+ *
+ * Specifications available at:
+ * http://id3.org/Developer_Information
+ */
+
 #include "id3v2.h"
 #include "id3v1.h"
 #include "libavutil/avstring.h"
 #include "libavutil/intreadwrite.h"
-#include "metadata.h"
+#include "libavutil/dict.h"
+#include "avio_internal.h"
 
 int ff_id3v2_match(const uint8_t *buf, const char * magic)
 {
@@ -50,19 +58,19 @@ int ff_id3v2_tag_len(const uint8_t * buf)
     return len;
 }
 
-static unsigned int get_size(ByteIOContext *s, int len)
+static unsigned int get_size(AVIOContext *s, int len)
 {
     int v = 0;
     while (len--)
-        v = (v << 7) + (get_byte(s) & 0x7F);
+        v = (v << 7) + (avio_r8(s) & 0x7F);
     return v;
 }
 
-static int read_id3v2_string(AVFormatContext *s, ByteIOContext *pb,
+static int read_id3v2_string(AVFormatContext *s, AVIOContext *pb,
                              const char *key, int taglen,
                              int encoding, char *dst, int dstlen)
 {
-    unsigned int (*get)(ByteIOContext*) = get_be16;
+    unsigned int (*get)(AVIOContext*) = avio_rb16;
     char *q = dst;
     uint8_t tmp;
     uint32_t ch;
@@ -71,7 +79,7 @@ static int read_id3v2_string(AVFormatContext *s, ByteIOContext *pb,
     switch (encoding) {
     case ID3v2_ENCODING_ISO8859:
         while (taglen) {
-            uint32_t val = get_byte(pb); taglen--;
+            uint32_t val = avio_r8(pb); taglen--;
             if (!val)
                 break;
             PUT_UTF8(val, tmp, if (q - dst < dstlen) *q++ = tmp;);
@@ -79,10 +87,10 @@ static int read_id3v2_string(AVFormatContext *s, ByteIOContext *pb,
         *q = 0;
         break;
     case ID3v2_ENCODING_UTF16BOM:
-        bom = get_be16(pb); taglen -= 2;
+        bom = avio_rb16(pb); taglen -= 2;
         switch (bom) {
         case 0xfffe:
-            get = get_le16;
+            get = avio_rl16;
         case 0xfeff:
             break;
         default:
@@ -102,7 +110,7 @@ static int read_id3v2_string(AVFormatContext *s, ByteIOContext *pb,
         break;
     case ID3v2_ENCODING_UTF8:
         while (taglen) {
-            uint32_t val = get_byte(pb); taglen--;
+            uint32_t val = avio_r8(pb); taglen--;
             if (!val)
                 break;
             GET_UTF8(ch, val, break;);
@@ -116,7 +124,7 @@ static int read_id3v2_string(AVFormatContext *s, ByteIOContext *pb,
     return taglen;
 }
 
-static void read_ttag(AVFormatContext *s, ByteIOContext *pb, int taglen, const char *key)
+static void read_ttag(AVFormatContext *s, AVIOContext *pb, int taglen, const char *key)
 {
     char dst[512];
     const char *val = NULL;
@@ -127,7 +135,7 @@ static void read_ttag(AVFormatContext *s, ByteIOContext *pb, int taglen, const c
         return;
 
     taglen--; /* account for encoding type byte */
-    encoding = get_byte(pb);
+    encoding = avio_r8(pb);
     taglen = read_id3v2_string(s, pb, key, taglen, encoding, dst, dstlen);
 
     if (!(strcmp(key, "TCON") && strcmp(key, "TCO"))
@@ -149,28 +157,37 @@ static void read_ttag(AVFormatContext *s, ByteIOContext *pb, int taglen, const c
     } else if (*dst)
         val = dst;
 
-    if (val)
-        av_metadata_set2(&s->metadata, key, val, AV_METADATA_DONT_OVERWRITE);
+    if (val) {
+        int i;
+        const char *name = key;
+        for (i = 0; ff_id3v2_tags[i].tag; i++) {
+            if (!strcmp(ff_id3v2_tags[i].tag, key)) {
+                name = ff_id3v2_tags[i].name;
+                break;
+            }
+        }
+        av_dict_set(&s->metadata, name, val, 0);
+    }
 }
 
 static int read_uslt(AVFormatContext *s, int taglen, const char *key)
 {
-    AVMetadataTag *tag;
+    AVDictionaryEntry *tag;
     uint8_t *data;
     char lang[4];
     int encoding;
 
-    encoding = get_byte(s->pb); // encoding
-    get_buffer(s->pb, lang, 3);
+    encoding = avio_r8(s->pb); // encoding
+    avio_read(s->pb, lang, 3);
     taglen -= 4;
     taglen = read_id3v2_string(s, s->pb, key, taglen, encoding, lang+3, 0); // description
     data = av_malloc(taglen);
     if (!data)
-        return AVERROR_NOMEM;
+        return AVERROR(ENOMEM);
     read_id3v2_string(s, s->pb, key, taglen, encoding, data, taglen-1);
 
-    if (av_metadata_set_custom(&s->metadata, &tag, METADATA_STRING, key, data,
-                               strlen(data), AV_METADATA_DONT_STRDUP_VAL) < 0)
+    if (av_dict_set_custom(&s->metadata, &tag, METADATA_STRING, "lyrics", data,
+                           strlen(data), AV_DICT_DONT_STRDUP_VAL) < 0)
         return -1;
     av_metadata_set_attribute(tag, "language", lang);
 
@@ -179,27 +196,39 @@ static int read_uslt(AVFormatContext *s, int taglen, const char *key)
 
 static int read_apic(AVFormatContext *s, int taglen, const char *key)
 {
-    AVMetadataTag *tag;
+    AVDictionaryEntry *tag;
     char mime[64];
-    int64_t pos = url_ftell(s->pb);
+    int64_t pos = avio_tell(s->pb);
     int len;
     uint8_t *data;
 
-    get_byte(s->pb); // encoding
-    get_strz(s->pb, mime, sizeof(mime));
-    get_byte(s->pb); // type
-    while (get_byte(s->pb)); // description
+    mime[0] = 0;
+    avio_r8(s->pb); // encoding
+    if (!strcmp(key, "PIC")) {
+        char type[4] = {0};
+        avio_read(s->pb, type, 3);
+        if (!strcmp(type, "PNG"))
+            strcpy(mime, "image/png");
+        else if (!strcmp(type, "JPG"))
+            strcpy(mime, "image/jpeg");
+        else if (!strcmp(type, "BMP"))
+            strcpy(mime, "image/bmp");
+    } else {
+        avio_get_str(s->pb, sizeof(mime), mime, sizeof(mime));
+    }
+    avio_r8(s->pb); // type
+    while (avio_r8(s->pb)); // description
 
-    len = taglen - (url_ftell(s->pb) - pos);
+    len = taglen - (avio_tell(s->pb) - pos);
     if (len <= 0)
         return -1;
     data = av_malloc(len);
     if (!data)
-        return AVERROR_NOMEM;
-    get_buffer(s->pb, data, len);
+        return AVERROR(ENOMEM);
+    avio_read(s->pb, data, len);
 
-    if (av_metadata_set_custom(&s->metadata, &tag, METADATA_BYTEARRAY, "APIC",
-                               data, len, AV_METADATA_DONT_STRDUP_VAL) < 0)
+    if (av_dict_set_custom(&s->metadata, &tag, METADATA_BYTEARRAY, "cover",
+                           data, len, AV_DICT_DONT_STRDUP_VAL) < 0)
         return -1;
     av_metadata_set_attribute(tag, "mime", mime);
 
@@ -208,12 +237,13 @@ static int read_apic(AVFormatContext *s, int taglen, const char *key)
 
 static void ff_id3v2_parse(AVFormatContext *s, int len, uint8_t version, uint8_t flags)
 {
-    int isv34, tlen, unsync;
+    int isv34, unsync;
+    unsigned tlen;
     char tag[5];
-    int64_t next;
+    int64_t next, end = avio_tell(s->pb) + len;
     int taghdrlen;
-    const char *reason;
-    ByteIOContext pb;
+    const char *reason = NULL;
+    AVIOContext pb;
     unsigned char *buffer = NULL;
     int buffer_size = 0;
 
@@ -238,88 +268,97 @@ static void ff_id3v2_parse(AVFormatContext *s, int len, uint8_t version, uint8_t
         goto error;
     }
 
+    snprintf(tag, 5, "2.%d", version);
+    av_dict_set(&s->metadata, "id3_version", tag, 0);
+
     unsync = flags & 0x80;
 
     if (isv34 && flags & 0x40) /* Extended header present, just skip over it */
-        url_fskip(s->pb, get_size(s->pb, 4));
+        avio_skip(s->pb, get_size(s->pb, 4));
 
     while (len >= taghdrlen) {
         unsigned int tflags = 0;
         int tunsync = 0;
 
         if (isv34) {
-            get_buffer(s->pb, tag, 4);
+            avio_read(s->pb, tag, 4);
             tag[4] = 0;
             if(version==3){
-                tlen = get_be32(s->pb);
+                tlen = avio_rb32(s->pb);
             }else
                 tlen = get_size(s->pb, 4);
-            tflags = get_be16(s->pb);
+            tflags = avio_rb16(s->pb);
             tunsync = tflags & ID3v2_FLAG_UNSYNCH;
         } else {
-            get_buffer(s->pb, tag, 3);
+            avio_read(s->pb, tag, 3);
             tag[3] = 0;
-            tlen = get_be24(s->pb);
+            tlen = avio_rb24(s->pb);
         }
+        if (tlen > (1<<28) || !tlen)
+            break;
         len -= taghdrlen + tlen;
 
         if (len < 0)
             break;
 
-        next = url_ftell(s->pb) + tlen;
+        next = avio_tell(s->pb) + tlen;
 
         if (tflags & ID3v2_FLAG_DATALEN) {
-            get_be32(s->pb);
+            if (tlen < 4)
+                break;
+            avio_rb32(s->pb);
             tlen -= 4;
         }
 
+        av_log(s, AV_LOG_DEBUG, "tag %s len %d\n", tag, tlen);
+
         if (tflags & (ID3v2_FLAG_ENCRYPTION | ID3v2_FLAG_COMPRESSION)) {
             av_log(s, AV_LOG_WARNING, "Skipping encrypted/compressed ID3v2 frame %s.\n", tag);
-            url_fskip(s->pb, tlen);
+            avio_skip(s->pb, tlen);
         } else if (tag[0] == 'T') {
             if (unsync || tunsync) {
                 int i, j;
                 av_fast_malloc(&buffer, &buffer_size, tlen);
+                if (!buffer) {
+                    av_log(s, AV_LOG_ERROR, "Failed to alloc %d bytes\n", tlen);
+                    goto seek;
+                }
                 for (i = 0, j = 0; i < tlen; i++, j++) {
-                    buffer[j] = get_byte(s->pb);
+                    buffer[j] = avio_r8(s->pb);
                     if (j > 0 && !buffer[j] && buffer[j - 1] == 0xff) {
                         /* Unsynchronised byte, skip it */
                         j--;
                     }
                 }
-                init_put_byte(&pb, buffer, j, 0, NULL, NULL, NULL, NULL);
+                ffio_init_context(&pb, buffer, j, 0, NULL, NULL, NULL, NULL);
                 read_ttag(s, &pb, j, tag);
             } else {
                 read_ttag(s, s->pb, tlen, tag);
             }
-        } else if (!strcmp(tag, "APIC")) {
+        } else if (!strcmp(tag, "APIC") || !strcmp(tag, "PIC")) {
             read_apic(s, tlen, tag);
         } else if (!strcmp(tag, "USLT") || !strcmp(tag, "ULT")) {
             read_uslt(s, tlen, tag);
         } else if (!tag[0]) {
             if (tag[1])
                 av_log(s, AV_LOG_WARNING, "invalid frame id, assuming padding");
-            url_fskip(s->pb, tlen);
+            avio_skip(s->pb, tlen);
             break;
         }
         /* Skip to end of tag */
-        url_fseek(s->pb, next, SEEK_SET);
+seek:
+        avio_seek(s->pb, next, SEEK_SET);
     }
 
-    if (len > 0) {
-        /* Skip padding */
-        url_fskip(s->pb, len);
-    }
     if (version == 4 && flags & 0x10) /* Footer preset, always 10 bytes, skip over it */
-        url_fskip(s->pb, 10);
-
-    av_free(buffer);
-    return;
+        end += 10;
 
   error:
-    av_log(s, AV_LOG_INFO, "ID3v2.%d tag skipped, cannot handle %s\n", version, reason);
-    url_fskip(s->pb, len);
+    if (reason)
+        av_log(s, AV_LOG_INFO, "ID3v2.%d tag skipped, cannot handle %s\n", version, reason);
+    avio_seek(s->pb, end, SEEK_SET);
     av_free(buffer);
+    return;
 }
 
 void ff_id3v2_read(AVFormatContext *s, const char *magic)
@@ -331,8 +370,8 @@ void ff_id3v2_read(AVFormatContext *s, const char *magic)
 
     do {
         /* save the current offset in case there's nothing to read/skip */
-        off = url_ftell(s->pb);
-        ret = get_buffer(s->pb, buf, ID3v2_HEADER_SIZE);
+        off = avio_tell(s->pb);
+        ret = avio_read(s->pb, buf, ID3v2_HEADER_SIZE);
         if (ret != ID3v2_HEADER_SIZE)
             break;
             found_header = ff_id3v2_match(buf, magic);
@@ -344,77 +383,51 @@ void ff_id3v2_read(AVFormatContext *s, const char *magic)
                    (buf[9] & 0x7f);
             ff_id3v2_parse(s, len, buf[3], buf[5]);
         } else {
-            url_fseek(s->pb, off, SEEK_SET);
+            avio_seek(s->pb, off, SEEK_SET);
         }
     } while (found_header);
-    ff_metadata_conv(&s->metadata, NULL, ff_id3v2_34_metadata_conv);
-    ff_metadata_conv(&s->metadata, NULL, ff_id3v2_2_metadata_conv);
-    ff_metadata_conv(&s->metadata, NULL, ff_id3v2_4_metadata_conv);
 }
 
-const AVMetadataConv ff_id3v2_34_metadata_conv[] = {
-    { "APIC", "cover"},
-    { "TALB", "album"},
-    { "TCOM", "composer"},
-    { "TCON", "genre"},
-    { "TCOP", "copyright"},
-    { "TENC", "encoder"},
-    { "TIT2", "title"},
-    { "TLAN", "language"},
-    { "TPE1", "artist"},
-    { "TPE2", "album_artist"},
-    { "TPE3", "performer"},
-    { "TPOS", "disc"},
-    { "TPUB", "publisher"},
-    { "TRCK", "track"},
-    { "TSSE", "encoder"},
-    { "TYER", "year"},
-    { "USLT", "lyrics"},
+/*
+ * 0 - v2.2
+ * 1 - v2.3
+ * 2 - v2.4
+*/
+const ID3v2Tag ff_id3v2_tags[] = {
+    { "APIC", "cover", 3},
+    { "TALB", "album", 3},
+    { "TCOM", "composer", 3},
+    { "TCON", "genre", 3},
+    { "TCOP", "copyright", 3},
+    { "TENC", "encoded_by", 3},
+    { "TIT2", "title", 3},
+    { "TLAN", "language", 3},
+    { "TPE1", "artist", 3},
+    { "TPE2", "album_artist", 3},
+    { "TPE3", "performer", 3},
+    { "TPOS", "disc", 3},
+    { "TPUB", "publisher", 3},
+    { "TRCK", "track", 3},
+    { "TSSE", "encoder", 3},
+    { "TYER", "year", 1},
+    { "USLT", "lyrics", 3},
+    { "TDRC", "date", 2},
+    { "TDRL", "release_date", 2},
+    { "TDEN", "creation_time", 2},
+    { "TSOA", "album-sort", 2},
+    { "TSOP", "artist-sort", 2},
+    { "TSOT", "title-sort", 2},
+    { "TAL",  "album", 0},
+    { "TCM",  "composer", 0},
+    { "TCO",  "genre", 0},
+    { "TT2",  "title", 0},
+    { "TEN",  "encoded_by", 0},
+    { "TP1",  "artist", 0},
+    { "TP2",  "album_artist", 0},
+    { "TP3",  "performer", 0},
+    { "TPA",  "disc", 0},
+    { "TRK",  "track", 0},
+    { "ULT",  "lyrics", 0},
+    { "TYE",  "year", 0},
     { 0 }
-};
-
-const AVMetadataConv ff_id3v2_4_metadata_conv[] = {
-    { "TDRC", "date"},
-    { "TDRL", "release_date"},
-    { "TDEN", "creation_time"},
-    { "TSOA", "album-sort"},
-    { "TSOP", "artist-sort"},
-    { "TSOT", "title-sort"},
-    { 0 }
-};
-
-const AVMetadataConv ff_id3v2_2_metadata_conv[] = {
-    { "TAL",  "album"},
-    { "TCM",  "composer"},
-    { "TCO",  "genre"},
-    { "TT2",  "title"},
-    { "TEN",  "encoder"},
-    { "TP1",  "artist"},
-    { "TP2",  "album_artist"},
-    { "TP3",  "performer"},
-    { "TRK",  "track"},
-    { "ULT",  "lyrics"},
-    { "TYE",  "year"},
-    { 0 }
-};
-
-
-const char ff_id3v2_tags[][4] = {
-   "TALB", "TBPM", "TCOM", "TCON", "TCOP", "TDLY", "TENC", "TEXT",
-   "TFLT", "TIT1", "TIT2", "TIT3", "TKEY", "TLAN", "TLEN", "TMED",
-   "TOAL", "TOFN", "TOLY", "TOPE", "TOWN", "TPE1", "TPE2", "TPE3",
-   "TPE4", "TPOS", "TPUB", "TRCK", "TRSN", "TRSO", "TSRC", "TSSE",
-   "APIC", "USLT",
-   { 0 },
-};
-
-const char ff_id3v2_4_tags[][4] = {
-   "TDEN", "TDOR", "TDRC", "TDRL", "TDTG", "TIPL", "TMCL", "TMOO",
-   "TPRO", "TSOA", "TSOP", "TSOT", "TSST",
-   { 0 },
-};
-
-const char ff_id3v2_3_tags[][4] = {
-   "TDAT", "TIME", "TORY", "TRDA", "TSIZ", "TYER",
-   { 0 },
 };

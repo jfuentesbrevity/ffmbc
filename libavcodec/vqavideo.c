@@ -21,9 +21,9 @@
 
 /**
  * @file
- * VQA Video Decoder by Mike Melanson (melanson@pcisys.net)
- * For more information about the VQA format, visit:
- *   http://wiki.multimedia.cx/index.php?title=VQA
+ * VQA Video Decoder
+ * @author Mike Melanson (melanson@pcisys.net)
+ * @see http://wiki.multimedia.cx/index.php?title=VQA
  *
  * The VQA video decoder outputs PAL8 or RGB555 colorspace data, depending
  * on the type of data in the file.
@@ -89,14 +89,6 @@
 #define CPL0_TAG MKBETAG('C', 'P', 'L', '0')
 #define CPLZ_TAG MKBETAG('C', 'P', 'L', 'Z')
 #define VPTZ_TAG MKBETAG('V', 'P', 'T', 'Z')
-
-#define VQA_DEBUG 0
-
-#if VQA_DEBUG
-#define vqa_debug printf
-#else
-static inline void vqa_debug(const char *format, ...) { }
-#endif
 
 typedef struct VqaContext {
 
@@ -187,6 +179,7 @@ static av_cold int vqa_decode_init(AVCodecContext *avctx)
         (s->height / s->vector_height) * 2;
     s->decode_buffer = av_malloc(s->decode_buffer_size);
 
+    avcodec_get_frame_defaults(&s->frame);
     s->frame.data[0] = NULL;
 
     return 0;
@@ -212,7 +205,7 @@ static void decode_format80(const unsigned char *src, int src_size,
 
     while (src_index < src_size) {
 
-        vqa_debug("      opcode %02X: ", src[src_index]);
+        av_dlog(NULL, "      opcode %02X: ", src[src_index]);
 
         /* 0x80 means that frame is finished */
         if (src[src_index] == 0x80)
@@ -231,7 +224,7 @@ static void decode_format80(const unsigned char *src, int src_size,
             src_index += 2;
             src_pos = AV_RL16(&src[src_index]);
             src_index += 2;
-            vqa_debug("(1) copy %X bytes from absolute pos %X\n", count, src_pos);
+            av_dlog(NULL, "(1) copy %X bytes from absolute pos %X\n", count, src_pos);
             CHECK_COUNT();
             for (i = 0; i < count; i++)
                 dest[dest_index + i] = dest[src_pos + i];
@@ -243,7 +236,7 @@ static void decode_format80(const unsigned char *src, int src_size,
             count = AV_RL16(&src[src_index]);
             src_index += 2;
             color = src[src_index++];
-            vqa_debug("(2) set %X bytes to %02X\n", count, color);
+            av_dlog(NULL, "(2) set %X bytes to %02X\n", count, color);
             CHECK_COUNT();
             memset(&dest[dest_index], color, count);
             dest_index += count;
@@ -253,7 +246,7 @@ static void decode_format80(const unsigned char *src, int src_size,
             count = (src[src_index++] & 0x3F) + 3;
             src_pos = AV_RL16(&src[src_index]);
             src_index += 2;
-            vqa_debug("(3) copy %X bytes from absolute pos %X\n", count, src_pos);
+            av_dlog(NULL, "(3) copy %X bytes from absolute pos %X\n", count, src_pos);
             CHECK_COUNT();
             for (i = 0; i < count; i++)
                 dest[dest_index + i] = dest[src_pos + i];
@@ -262,7 +255,7 @@ static void decode_format80(const unsigned char *src, int src_size,
         } else if (src[src_index] > 0x80) {
 
             count = src[src_index++] & 0x3F;
-            vqa_debug("(4) copy %X bytes from source to dest\n", count);
+            av_dlog(NULL, "(4) copy %X bytes from source to dest\n", count);
             CHECK_COUNT();
             memcpy(&dest[dest_index], &src[src_index], count);
             src_index += count;
@@ -273,7 +266,7 @@ static void decode_format80(const unsigned char *src, int src_size,
             count = ((src[src_index] & 0x70) >> 4) + 3;
             src_pos = AV_RB16(&src[src_index]) & 0x0FFF;
             src_index += 2;
-            vqa_debug("(5) copy %X bytes from relpos %X\n", count, src_pos);
+            av_dlog(NULL, "(5) copy %X bytes from relpos %X\n", count, src_pos);
             CHECK_COUNT();
             for (i = 0; i < count; i++)
                 dest[dest_index + i] = dest[dest_index - src_pos + i];
@@ -464,8 +457,6 @@ static void vqa_decode_chunk(VqaContext *s)
             switch (s->vqa_version) {
 
             case 1:
-/* still need sample media for this case (only one game, "Legend of
- * Kyrandia III : Malcolm's Revenge", is known to use this version) */
                 lobyte = s->decode_buffer[lobytes * 2];
                 hibyte = s->decode_buffer[(lobytes * 2) + 1];
                 vector_index = ((hibyte << 8) | lobyte) >> 3;

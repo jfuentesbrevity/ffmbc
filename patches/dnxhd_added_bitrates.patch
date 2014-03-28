@@ -1,0 +1,22 @@
+Index: ../src/libavcodec/dnxhddata.c
+===================================================================
+--- ../src/libavcodec/dnxhddata.c	(revision 1306)
++++ ../src/libavcodec/dnxhddata.c	(working copy)
+@@ -1068,7 +1068,7 @@
+       dnxhd_1235_1241_ac_codes, dnxhd_1235_1241_ac_bits, dnxhd_1235_1241_ac_level,
+       dnxhd_1235_1241_ac_run_flag, dnxhd_1235_1241_ac_index_flag,
+       dnxhd_1235_1238_1241_run_codes, dnxhd_1235_1238_1241_run_bits, dnxhd_1235_1241_run,
+-      { 175, 185, 365, 440 } },
++      { 175, 185, 220, 365, 440 } },
+     { 1237, 1920, 1080, 0, 606208, 606208, 4, 8,
+       dnxhd_1237_luma_weight, dnxhd_1237_chroma_weight,
+       dnxhd_1237_dc_codes, dnxhd_1237_dc_bits,
+@@ -1110,7 +1110,7 @@
+       dnxhd_1250_ac_codes, dnxhd_1250_ac_bits, dnxhd_1250_ac_level,
+       dnxhd_1250_ac_run_flag, dnxhd_1250_ac_index_flag,
+       dnxhd_1250_run_codes, dnxhd_1250_run_bits, dnxhd_1250_run,
+-      { 90, 180, 220 } },
++      { 90, 110, 175, 180, 220 } },
+     { 1251, 1280,  720, 0, 458752, 458752, 4, 8,
+       dnxhd_1251_luma_weight, dnxhd_1251_chroma_weight,
+       dnxhd_1251_dc_codes, dnxhd_1251_dc_bits,

@@ -20,11 +20,10 @@
  */
 
 /**
- * RL2 Video Decoder
  * @file
+ * RL2 Video Decoder
  * @author Sascha Sommer (saschasommer@freenet.de)
- * For more information about the RL2 format, visit:
- *   http://wiki.multimedia.cx/index.php?title=RL2
+ * @see http://wiki.multimedia.cx/index.php?title=RL2
  */
 
 #include <stdio.h>
@@ -134,6 +133,7 @@ static av_cold int rl2_decode_init(AVCodecContext *avctx)
     int i;
     s->avctx = avctx;
     avctx->pix_fmt = PIX_FMT_PAL8;
+    avcodec_get_frame_defaults(&s->frame);
 
     /** parse extra data */
     if(!avctx->extradata || avctx->extradata_size < EXTRADATA1_SIZE){

@@ -109,16 +109,32 @@ typedef struct AVFilterInOut {
 } AVFilterInOut;
 
 /**
+ * Create an AVFilterInOut.
+ * Must be free with avfilter_inout_free().
+ */
+AVFilterInOut *avfilter_inout_alloc(void);
+
+/**
+ * Free the AVFilterInOut in *inout, and set its pointer to NULL.
+ * If *inout is NULL, do nothing.
+ */
+void avfilter_inout_free(AVFilterInOut **inout);
+
+/**
  * Add a graph described by a string to a graph.
  *
  * @param graph   the filter graph where to link the parsed graph context
  * @param filters string to be parsed
- * @param inputs  linked list to the inputs of the graph
- * @param outputs linked list to the outputs of the graph
+ * @param inputs  pointer to a linked list to the inputs of the graph, may be NULL.
+ *                If non-NULL, *inputs is updated to contain the list of open inputs
+ *                after the parsing, should be freed with avfilter_inout_free().
+ * @param outputs pointer to a linked list to the outputs of the graph, may be NULL.
+ *                If non-NULL, *outputs is updated to contain the list of open outputs
+ *                after the parsing, should be freed with avfilter_inout_free().
  * @return zero on success, a negative AVERROR code on error
  */
 int avfilter_graph_parse(AVFilterGraph *graph, const char *filters,
-                         AVFilterInOut *inputs, AVFilterInOut *outputs,
-                         AVClass *log_ctx);
+                         AVFilterInOut **inputs, AVFilterInOut **outputs,
+                         void *log_ctx);
 
-#endif  /* AVFILTER_AVFILTERGRAPH_H */
+#endif /* AVFILTER_AVFILTERGRAPH_H */

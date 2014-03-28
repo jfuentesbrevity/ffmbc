@@ -96,7 +96,7 @@ static void h261_encode_gob_header(MpegEncContext * s, int mb_line){
     }
     put_bits(&s->pb, 16, 1); /* GBSC */
     put_bits(&s->pb, 4, h->gob_number); /* GN */
-    put_bits(&s->pb, 5, s->qp); /* GQUANT */
+    put_bits(&s->pb, 5, s->qscale); /* GQUANT */
     put_bits(&s->pb, 1, 0); /* no GEI */
     h->current_mba = 0;
     h->previous_mba = 0;
@@ -205,8 +205,8 @@ void ff_h261_encode_mb(MpegEncContext * s,
     h->mtype = h261_mtype_map[h->mtype];
 
     if(IS_QUANT(h->mtype)){
-        ff_set_qscale(s, s->qp+s->dquant);
-        put_bits(&s->pb, 5, s->qp);
+        ff_set_qscale(s,s->qscale+s->dquant);
+        put_bits(&s->pb, 5, s->qscale);
     }
 
     if(IS_16X16(h->mtype)){

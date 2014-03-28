@@ -36,14 +36,21 @@ int ff_framenum_to_drop_timecode(int frame_num, int fps)
     return frame_num + 18*factor * d + 2*factor * ((m - 2) / (1798*factor));
 }
 
-int ff_framenum_to_timecode(char timecode[32], int frame_num, int drop, int fps)
+int ff_framenum_to_timecode(char timecode[16], int frame_num, int drop, int fps)
 {
-    int hours, mins, secs, frames;
+    int hours, mins, secs, frames, neg = 0;
+
+    timecode[0] = 0;
 
     if (fps != 24 && fps != 25 && fps != 30 && fps != 50 && fps != 60)
         return -2;
     if (drop && fps != 30 && fps != 60)
         return -3;
+
+    if (frame_num < 0) {
+        neg = 1;
+        frame_num = -frame_num;
+    }
 
     if (drop)
         frame_num = ff_framenum_to_drop_timecode(frame_num, fps);
@@ -52,8 +59,8 @@ int ff_framenum_to_timecode(char timecode[32], int frame_num, int drop, int fps)
     secs = (frame_num / fps) % 60;
     mins = (frame_num / (60*fps)) % 60;
     hours = frame_num / (3600*fps);
-    snprintf(timecode, 32, "%02d:%02d:%02d%c%02d",
-             hours, mins, secs, drop ? ';' : ':', frames);
+    snprintf(timecode, 16, "%s%02d:%02d:%02d%c%02d",
+             neg ? "-" : "", hours, mins, secs, drop ? ';' : ':', frames);
     return 0;
 }
 

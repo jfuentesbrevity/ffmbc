@@ -156,18 +156,20 @@ static void jpeg_put_comments(MpegEncContext *s)
     int size;
     uint8_t *ptr;
 
-    if (s->aspect_ratio_info /* && !lossless */)
-    {
-    /* JFIF header */
-    put_marker(p, APP0);
-    put_bits(p, 16, 16);
-    ff_put_string(p, "JFIF", 1); /* this puts the trailing zero-byte too */
-    put_bits(p, 16, 0x0201); /* v 1.02 */
-    put_bits(p, 8, 0); /* units type: 0 - aspect ratio */
-    put_bits(p, 16, s->avctx->sample_aspect_ratio.num);
-    put_bits(p, 16, s->avctx->sample_aspect_ratio.den);
-    put_bits(p, 8, 0); /* thumbnail width */
-    put_bits(p, 8, 0); /* thumbnail height */
+    if (s->avctx->sample_aspect_ratio.num > 0 &&
+        s->avctx->sample_aspect_ratio.den > 0 &&
+        s->avctx->sample_aspect_ratio.den !=
+        s->avctx->sample_aspect_ratio.den) {
+        /* JFIF header */
+        put_marker(p, APP0);
+        put_bits(p, 16, 16);
+        ff_put_string(p, "JFIF", 1); /* this puts the trailing zero-byte too */
+        put_bits(p, 16, 0x0102); /* v 1.02 */
+        put_bits(p, 8, 0); /* units type: 0 - aspect ratio */
+        put_bits(p, 16, s->avctx->sample_aspect_ratio.num);
+        put_bits(p, 16, s->avctx->sample_aspect_ratio.den);
+        put_bits(p, 8, 0); /* thumbnail width */
+        put_bits(p, 8, 0); /* thumbnail height */
     }
 
     /* comment */

@@ -16,7 +16,7 @@
 ;*
 ;* You should have received a copy of the GNU General Public
 ;* License along with FFmpeg; if not, write to the Free Software
-;* 51, Inc., Foundation Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+;* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 ;******************************************************************************
 
 %include "x86inc.asm"
@@ -27,8 +27,10 @@ pb_zzzzzzzz77777777: times 8 db -1
 pb_7: times 8 db 7
 pb_zzzz3333zzzzbbbb: db -1,-1,-1,-1,3,3,3,3,-1,-1,-1,-1,11,11,11,11
 pb_zz11zz55zz99zzdd: db -1,-1,1,1,-1,-1,5,5,-1,-1,9,9,-1,-1,13,13
+pb_revwords: db 14, 15, 12, 13, 10, 11, 8, 9, 6, 7, 4, 5, 2, 3, 0, 1
+pd_16384: times 4 dd 16384
 
-section .text align=16
+SECTION_TEXT
 
 %macro SCALARPRODUCT 1
 ; int scalarproduct_int16(int16_t *v1, int16_t *v2, int order, int shift)
@@ -201,6 +203,130 @@ SCALARPRODUCT_LOOP 0
     movd   eax, m6
     RET
 
+
+;-----------------------------------------------------------------------------
+; void ff_apply_window_int16(int16_t *output, const int16_t *input,
+;                            const int16_t *window, unsigned int len)
+;-----------------------------------------------------------------------------
+
+%macro REVERSE_WORDS_MMXEXT 1-2
+    pshufw   %1, %1, 0x1B
+%endmacro
+
+%macro REVERSE_WORDS_SSE2 1-2
+    pshuflw  %1, %1, 0x1B
+    pshufhw  %1, %1, 0x1B
+    pshufd   %1, %1, 0x4E
+%endmacro
+
+%macro REVERSE_WORDS_SSSE3 2
+    pshufb  %1, %2
+%endmacro
+
+; dst = (dst * src) >> 15
+; pmulhw cuts off the bottom bit, so we have to lshift by 1 and add it back
+; in from the pmullw result.
+%macro MUL16FIXED_MMXEXT 3 ; dst, src, temp
+    mova    %3, %1
+    pmulhw  %1, %2
+    pmullw  %3, %2
+    psrlw   %3, 15
+    psllw   %1, 1
+    por     %1, %3
+%endmacro
+
+; dst = ((dst * src) + (1<<14)) >> 15
+%macro MUL16FIXED_SSSE3 3 ; dst, src, unused
+    pmulhrsw   %1, %2
+%endmacro
+
+%macro APPLY_WINDOW_INT16 3 ; %1=instruction set, %2=mmxext/sse2 bit exact version, %3=has_ssse3
+cglobal apply_window_int16_%1, 4,5,6, output, input, window, offset, offset2
+    lea     offset2q, [offsetq-mmsize]
+%if %2
+    mova          m5, [pd_16384]
+%elifidn %1, ssse3
+    mova          m5, [pb_revwords]
+    ALIGN 16
+%endif
+.loop:
+%if %2
+    ; This version expands 16-bit to 32-bit, multiplies by the window,
+    ; adds 16384 for rounding, right shifts 15, then repacks back to words to
+    ; save to the output. The window is reversed for the second half.
+    mova          m3, [windowq+offset2q]
+    mova          m4, [ inputq+offset2q]
+    pxor          m0, m0
+    punpcklwd     m0, m3
+    punpcklwd     m1, m4
+    pmaddwd       m0, m1
+    paddd         m0, m5
+    psrad         m0, 15
+    pxor          m2, m2
+    punpckhwd     m2, m3
+    punpckhwd     m1, m4
+    pmaddwd       m2, m1
+    paddd         m2, m5
+    psrad         m2, 15
+    packssdw      m0, m2
+    mova  [outputq+offset2q], m0
+    REVERSE_WORDS m3
+    mova          m4, [ inputq+offsetq]
+    pxor          m0, m0
+    punpcklwd     m0, m3
+    punpcklwd     m1, m4
+    pmaddwd       m0, m1
+    paddd         m0, m5
+    psrad         m0, 15
+    pxor          m2, m2
+    punpckhwd     m2, m3
+    punpckhwd     m1, m4
+    pmaddwd       m2, m1
+    paddd         m2, m5
+    psrad         m2, 15
+    packssdw      m0, m2
+    mova  [outputq+offsetq], m0
+%elif %3
+    ; This version does the 16x16->16 multiplication in-place without expanding
+    ; to 32-bit. The ssse3 version is bit-identical.
+    mova          m0, [windowq+offset2q]
+    mova          m1, [ inputq+offset2q]
+    pmulhrsw      m1, m0
+    REVERSE_WORDS m0, m5
+    pmulhrsw      m0, [ inputq+offsetq ]
+    mova  [outputq+offset2q], m1
+    mova  [outputq+offsetq ], m0
+%else
+    ; This version does the 16x16->16 multiplication in-place without expanding
+    ; to 32-bit. The mmxext and sse2 versions do not use rounding, and
+    ; therefore are not bit-identical to the C version.
+    mova          m0, [windowq+offset2q]
+    mova          m1, [ inputq+offset2q]
+    mova          m2, [ inputq+offsetq ]
+    MUL16FIXED    m1, m0, m3
+    REVERSE_WORDS m0
+    MUL16FIXED    m2, m0, m3
+    mova  [outputq+offset2q], m1
+    mova  [outputq+offsetq ], m2
+%endif
+    add      offsetd, mmsize
+    sub     offset2d, mmsize
+    jae .loop
+    REP_RET
+%endmacro
+
+INIT_MMX
+%define REVERSE_WORDS REVERSE_WORDS_MMXEXT
+%define MUL16FIXED MUL16FIXED_MMXEXT
+APPLY_WINDOW_INT16 mmxext,     0, 0
+APPLY_WINDOW_INT16 mmxext_ba,  1, 0
+INIT_XMM
+%define REVERSE_WORDS REVERSE_WORDS_SSE2
+APPLY_WINDOW_INT16 sse2,       0, 0
+APPLY_WINDOW_INT16 sse2_ba,    1, 0
+APPLY_WINDOW_INT16 ssse3_atom, 0, 1
+%define REVERSE_WORDS REVERSE_WORDS_SSSE3
+APPLY_WINDOW_INT16 ssse3,      0, 1
 
 
 ; void add_hfyu_median_prediction_mmx2(uint8_t *dst, const uint8_t *top, const uint8_t *diff, int w, int *left, int *left_top)
@@ -921,4 +1047,119 @@ SLOW_RIGHT_EXTEND %1
 emu_edge sse
 %ifdef ARCH_X86_32
 emu_edge mmx
+%endif
+
+;-----------------------------------------------------------------------------
+; void ff_vector_clip_int32(int32_t *dst, const int32_t *src, int32_t min,
+;                           int32_t max, unsigned int len)
+;-----------------------------------------------------------------------------
+
+%macro PMINSD_MMX 3 ; dst, src, tmp
+    mova      %3, %2
+    pcmpgtd   %3, %1
+    pxor      %1, %2
+    pand      %1, %3
+    pxor      %1, %2
+%endmacro
+
+%macro PMAXSD_MMX 3 ; dst, src, tmp
+    mova      %3, %1
+    pcmpgtd   %3, %2
+    pand      %1, %3
+    pandn     %3, %2
+    por       %1, %3
+%endmacro
+
+%macro CLIPD_MMX 3-4 ; src/dst, min, max, tmp
+    PMINSD_MMX %1, %3, %4
+    PMAXSD_MMX %1, %2, %4
+%endmacro
+
+%macro CLIPD_SSE2 3-4 ; src/dst, min (float), max (float), unused
+    cvtdq2ps  %1, %1
+    minps     %1, %3
+    maxps     %1, %2
+    cvtps2dq  %1, %1
+%endmacro
+
+%macro CLIPD_SSE41 3-4 ;  src/dst, min, max, unused
+    pminsd  %1, %3
+    pmaxsd  %1, %2
+%endmacro
+
+%macro SPLATD_MMX 1
+    punpckldq  %1, %1
+%endmacro
+
+%macro SPLATD_SSE2 1
+    pshufd  %1, %1, 0
+%endmacro
+
+%macro VECTOR_CLIP_INT32 4
+cglobal vector_clip_int32_%1, 5,5,%2, dst, src, min, max, len
+%ifidn %1, sse2
+    cvtsi2ss  m4, minm
+    cvtsi2ss  m5, maxm
+%else
+    movd      m4, minm
+    movd      m5, maxm
+%endif
+    SPLATD    m4
+    SPLATD    m5
+.loop:
+%assign %%i 1
+%rep %3
+    mova      m0,  [srcq+mmsize*0*%%i]
+    mova      m1,  [srcq+mmsize*1*%%i]
+    mova      m2,  [srcq+mmsize*2*%%i]
+    mova      m3,  [srcq+mmsize*3*%%i]
+%if %4
+    mova      m7,  [srcq+mmsize*4*%%i]
+    mova      m8,  [srcq+mmsize*5*%%i]
+    mova      m9,  [srcq+mmsize*6*%%i]
+    mova      m10, [srcq+mmsize*7*%%i]
+%endif
+    CLIPD  m0,  m4, m5, m6
+    CLIPD  m1,  m4, m5, m6
+    CLIPD  m2,  m4, m5, m6
+    CLIPD  m3,  m4, m5, m6
+%if %4
+    CLIPD  m7,  m4, m5, m6
+    CLIPD  m8,  m4, m5, m6
+    CLIPD  m9,  m4, m5, m6
+    CLIPD  m10, m4, m5, m6
+%endif
+    mova  [dstq+mmsize*0*%%i], m0
+    mova  [dstq+mmsize*1*%%i], m1
+    mova  [dstq+mmsize*2*%%i], m2
+    mova  [dstq+mmsize*3*%%i], m3
+%if %4
+    mova  [dstq+mmsize*4*%%i], m7
+    mova  [dstq+mmsize*5*%%i], m8
+    mova  [dstq+mmsize*6*%%i], m9
+    mova  [dstq+mmsize*7*%%i], m10
+%endif
+%assign %%i %%i+1
+%endrep
+    add     srcq, mmsize*4*(%3+%4)
+    add     dstq, mmsize*4*(%3+%4)
+    sub     lend, mmsize*(%3+%4)
+    jg .loop
+    REP_RET
+%endmacro
+
+INIT_MMX
+%define SPLATD SPLATD_MMX
+%define CLIPD CLIPD_MMX
+VECTOR_CLIP_INT32 mmx, 0, 1, 0
+INIT_XMM
+%define SPLATD SPLATD_SSE2
+VECTOR_CLIP_INT32 sse2_int, 6, 1, 0
+%define CLIPD CLIPD_SSE2
+VECTOR_CLIP_INT32 sse2, 6, 2, 0
+%define CLIPD CLIPD_SSE41
+%ifdef m8
+VECTOR_CLIP_INT32 sse41, 11, 1, 1
+%else
+VECTOR_CLIP_INT32 sse41, 6, 1, 0
 %endif

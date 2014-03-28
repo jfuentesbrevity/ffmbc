@@ -67,7 +67,7 @@ const uint8_t *ff_avc_find_startcode(const uint8_t *p, const uint8_t *end){
     return out;
 }
 
-int ff_avc_parse_nal_units(AVCodecContext *avctx, ByteIOContext *pb, const uint8_t *buf_in, int size)
+int ff_avc_parse_nal_units(AVCodecContext *avctx, AVIOContext *pb, const uint8_t *buf_in, int size)
 {
     const uint8_t *p = buf_in;
     const uint8_t *end = p + size;
@@ -110,8 +110,8 @@ int ff_avc_parse_nal_units(AVCodecContext *avctx, ByteIOContext *pb, const uint8
         case 9:
             goto skip;
         }
-        put_be32(pb, nal_end - nal_start);
-        put_buffer(pb, nal_start, nal_end - nal_start);
+        avio_wb32(pb, nal_end - nal_start);
+        avio_write(pb, nal_start, nal_end - nal_start);
         size += 4 + nal_end - nal_start;
     skip:
         nal_start = nal_next;
@@ -131,19 +131,19 @@ int ff_avc_parse_nal_units(AVCodecContext *avctx, ByteIOContext *pb, const uint8
 
 int ff_avc_parse_nal_units_buf(AVCodecContext *avctx, const uint8_t *buf_in, uint8_t **buf, int *size)
 {
-    ByteIOContext *pb;
-    int ret = url_open_dyn_buf(&pb);
+    AVIOContext *pb;
+    int ret = avio_open_dyn_buf(&pb);
     if(ret < 0)
         return ret;
 
     ff_avc_parse_nal_units(avctx, pb, buf_in, *size);
 
     av_freep(buf);
-    *size = url_close_dyn_buf(pb, buf);
+    *size = avio_close_dyn_buf(pb, buf);
     return 0;
 }
 
-int ff_isom_write_avcc(AVCodecContext *avctx, ByteIOContext *pb)
+int ff_isom_write_avcc(AVCodecContext *avctx, AVIOContext *pb)
 {
     if (avctx->extradata_size > 6) {
         /* check for h264 start code */
@@ -169,24 +169,23 @@ int ff_isom_write_avcc(AVCodecContext *avctx, ByteIOContext *pb)
                 }
                 p = nal_end;
             }
-
             assert(sps);
             assert(pps);
 
-            put_byte(pb, 1); /* version */
-            put_byte(pb, sps[1]); /* profile */
-            put_byte(pb, sps[2]); /* profile compat */
-            put_byte(pb, sps[3]); /* level */
-            put_byte(pb, 0xff); /* 6 bits reserved (111111) + 2 bits nal size length - 1 (11) */
-            put_byte(pb, 0xe1); /* 3 bits reserved (111) + 5 bits number of sps (00001) */
+            avio_w8(pb, 1); /* version */
+            avio_w8(pb, sps[1]); /* profile */
+            avio_w8(pb, sps[2]); /* profile compat */
+            avio_w8(pb, sps[3]); /* level */
+            avio_w8(pb, 0xff); /* 6 bits reserved (111111) + 2 bits nal size length - 1 (11) */
+            avio_w8(pb, 0xe1); /* 3 bits reserved (111) + 5 bits number of sps (00001) */
 
-            put_be16(pb, sps_size);
-            put_buffer(pb, sps, sps_size);
-            put_byte(pb, 1); /* number of pps */
-            put_be16(pb, pps_size);
-            put_buffer(pb, pps, pps_size);
+            avio_wb16(pb, sps_size);
+            avio_write(pb, sps, sps_size);
+            avio_w8(pb, 1); /* number of pps */
+            avio_wb16(pb, pps_size);
+            avio_write(pb, pps, pps_size);
         } else {
-            put_buffer(pb, avctx->extradata, avctx->extradata_size);
+            avio_write(pb, avctx->extradata, avctx->extradata_size);
         }
     }
     return 0;

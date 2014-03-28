@@ -140,8 +140,8 @@ const ff_asf_guid ff_asf_digital_signature = {
 const AVMetadataConv ff_asf_metadata_conv[] = {
     { "WM/AlbumArtist"     , "album_artist"},
     { "WM/AlbumTitle"      , "album"       },
-    { "Author"             , "author"      },
-    { "Description"        , "description" },
+    { "Author"             , "artist"      },
+    { "Description"        , "comment"     },
     { "WM/Composer"        , "composer"    },
     { "WM/EncodedBy"       , "encoded_by"  },
     { "WM/EncodingSettings", "encoder"     },

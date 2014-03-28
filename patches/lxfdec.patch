@@ -1,0 +1,98 @@
+Index: libavformat/lxfdec.c
+===================================================================
+--- libavformat/lxfdec.c	(revision 1799)
++++ libavformat/lxfdec.c	(working copy)
+@@ -23,12 +23,13 @@
+ #include "avformat.h"
+ #include "riff.h"
+ 
+-#define LXF_PACKET_HEADER_SIZE  60
+-#define LXF_HEADER_DATA_SIZE    120
+-#define LXF_IDENT               "LEITCH\0"
+-#define LXF_IDENT_LENGTH        8
+-#define LXF_SAMPLERATE          48000
+-#define LXF_MAX_AUDIO_PACKET    (8008*15*4) ///< 15-channel 32-bit NTSC audio frame
++#define LXF_PACKET_HEADER_SIZE_0 60
++#define LXF_PACKET_HEADER_SIZE 72
++#define LXF_HEADER_DATA_SIZE     120
++#define LXF_IDENT                "LEITCH\0"
++#define LXF_IDENT_LENGTH         8
++#define LXF_SAMPLERATE           48000
++#define LXF_MAX_AUDIO_PACKET     (8008*15*4) ///< 15-channel 32-bit NTSC audio frame
+ 
+ static const AVCodecTag lxf_tags[] = {
+     { CODEC_ID_MJPEG,       0 },
+@@ -66,10 +67,12 @@
+  */
+ static int check_checksum(const uint8_t *header)
+ {
+-    int x;
++    int x, header_size;
+     uint32_t sum = 0;
+ 
+-    for (x = 0; x < LXF_PACKET_HEADER_SIZE; x += 4)
++    header_size = AV_RL32(&header[12]);
++
++    for (x = 0; x < header_size; x += 4)
+         sum += AV_RL32(&header[x]);
+ 
+     return sum;
+@@ -114,31 +117,49 @@
+     AVIOContext   *pb  = s->pb;
+     int track_size, samples, ret;
+     AVStream *st;
++    int version, header_size, cs = 0;
+ 
+     //find and read the ident
+     if ((ret = sync(s, header)) < 0)
+         return ret;
+ 
++    //read the version and size of the packet header
++    if ((ret = avio_read(pb, header + LXF_IDENT_LENGTH, 8)) != 8) {
++        return ret < 0 ? ret : AVERROR_EOF;
++    }
++    version     = AV_RL32(&header[8]);
++    header_size = AV_RL32(&header[12]);
++
+     //read the rest of the packet header
+-    if ((ret = avio_read(pb, header + LXF_IDENT_LENGTH,
+-                          LXF_PACKET_HEADER_SIZE - LXF_IDENT_LENGTH)) !=
+-                          LXF_PACKET_HEADER_SIZE - LXF_IDENT_LENGTH) {
++    if ((ret = avio_read(pb, header + LXF_IDENT_LENGTH + 8,
++                          header_size - LXF_IDENT_LENGTH - 8)) !=
++                          header_size - LXF_IDENT_LENGTH - 8) {
+         return ret < 0 ? ret : AVERROR_EOF;
+     }
+ 
+-    if (check_checksum(header))
+-        av_log(s, AV_LOG_ERROR, "checksum error\n");
++    if (cs = check_checksum(header))
++        av_log(s, AV_LOG_ERROR, "checksum error %d\n", cs);
+ 
+-    *format = AV_RL32(&header[32]);
+-    ret     = AV_RL32(&header[36]);
++    if (version == 1) {
++        *format = AV_RL32(&header[40]);
++        ret     = AV_RL32(&header[44]);
++    } else {
++        *format = AV_RL32(&header[32]);
++        ret     = AV_RL32(&header[36]);
++    }    
+ 
+     //type
+     switch (AV_RL32(&header[16])) {
+     case 0:
+         //video
+         //skip VBI data and metadata
+-        avio_skip(pb, (int64_t)(uint32_t)AV_RL32(&header[44]) +
+-                      (int64_t)(uint32_t)AV_RL32(&header[52]));
++        if (version == 1) {
++            avio_skip(pb, (int64_t)(uint32_t)AV_RL32(&header[52]) +
++                          (int64_t)(uint32_t)AV_RL32(&header[60]));
++        } else {
++            avio_skip(pb, (int64_t)(uint32_t)AV_RL32(&header[44]) +
++                          (int64_t)(uint32_t)AV_RL32(&header[52]));
++        }    
+         break;
+     case 1:
+         //audio

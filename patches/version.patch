@@ -1,0 +1,13 @@
+Index: libavformat/version.h
+===================================================================
+--- libavformat/version.h	(revision 1799)
++++ libavformat/version.h	(working copy)
+@@ -35,7 +35,7 @@
+                                            LIBAVFORMAT_VERSION_MICRO)
+ #define LIBAVFORMAT_BUILD       LIBAVFORMAT_VERSION_INT
+ 
+-#define LIBAVFORMAT_IDENT       "FFmbc 0.7"
++#define LIBAVFORMAT_IDENT       "Brevity"
+ 
+ /**
+  * Those FF_API_* defines are not part of public API.

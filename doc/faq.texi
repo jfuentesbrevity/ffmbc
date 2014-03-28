@@ -23,7 +23,7 @@ help out creating them.
 @section I have a problem with an old version of FFmpeg; where should I report it?
 Nowhere. We do not support old FFmpeg versions in any way, we simply lack
 the time, motivation and manpower to do so. If you have a problem with an
-old version of FFmpeg, upgrade to the latest Subversion snapshot. If you
+old version of FFmpeg, upgrade to the latest git snapshot. If you
 still experience the problem, then you can report it according to the
 guidelines in @url{http://ffmpeg.org/bugreports.html}.
 
@@ -47,7 +47,7 @@ Likely reasons
 @item We are busy and haven't had time yet to read your report or
 investigate the issue.
 @item You didn't follow @url{http://ffmpeg.org/bugreports.html}.
-@item You didn't use Subversion HEAD.
+@item You didn't use git master.
 @item You reported a segmentation fault without gdb output.
 @item You describe a problem but not how to reproduce it.
 @item It's unclear if you use ffmpeg as command line tool or use
@@ -87,7 +87,7 @@ The following list of video codecs should work on most Windows systems:
 .asf only
 @item mpeg4
 Only if you have some MPEG-4 codec like ffdshow or Xvid installed.
-@item mpeg1
+@item mpeg1video
 .mpg only
 @end table
 Note, ASF files often have .wmv or .wma extensions in Windows. It should also
@@ -99,9 +99,9 @@ The following list of audio codecs should work on most Windows systems:
 @table @option
 @item adpcm_ima_wav
 @item adpcm_ms
-@item pcm
+@item pcm_s16le
 always
-@item mp3
+@item libmp3lame
 If some MP3 codec like LAME is installed.
 @end table
 
@@ -123,7 +123,8 @@ problem and an NP-hard problem...
 
 @section ffmpeg does not work; what is wrong?
 
-Try a @code{make distclean} in the ffmpeg source directory before the build. If this does not help see
+Try a @code{make distclean} in the ffmpeg source directory before the build.
+If this does not help see
 (@url{http://ffmpeg.org/bugreports.html}).
 
 @section How do I encode single pictures into movies?
@@ -226,7 +227,7 @@ mv4, title
 @item non-working stuff
 B-frames
 @item example command line
-ffmpeg -i input -acodec libfaac -ab 128kb -vcodec mpeg4 -b 1200kb -mbd 2 -flags +mv4 -trellis 2 -aic 2 -cmp 2 -subcmp 2 -s 320x180 -metadata title=X output.mp4
+ffmpeg -i input -acodec libfaac -ab 128k -vcodec mpeg4 -b 1200k -mbd 2 -flags +mv4+aic -trellis 2 -cmp 2 -subcmp 2 -s 320x180 -metadata title=X output.mp4
 @end table
 
 @section How do I encode videos which play on the PSP?
@@ -239,7 +240,7 @@ mv4, title
 @item non-working stuff
 B-frames
 @item example command line
-ffmpeg -i input -acodec libfaac -ab 128kb -vcodec mpeg4 -b 1200kb -ar 24000 -mbd 2 -flags +mv4 -trellis 2 -aic 2 -cmp 2 -subcmp 2 -s 368x192 -r 30000/1001 -metadata title=X -f psp output.mp4
+ffmpeg -i input -acodec libfaac -ab 128k -vcodec mpeg4 -b 1200k -ar 24000 -mbd 2 -flags +mv4+aic -trellis 2 -cmp 2 -subcmp 2 -s 368x192 -r 30000/1001 -metadata title=X -f psp output.mp4
 @item needed stuff for H.264
 -acodec libfaac -vcodec libx264 width*height<=76800 width%16=0? height%16=0? -ar 48000 -coder 1 -r 30000/1001 or 15000/1001 -f psp
 @item working stuff for H.264
@@ -247,11 +248,11 @@ title, loop filter
 @item non-working stuff for H.264
 CAVLC
 @item example command line
-ffmpeg -i input -acodec libfaac -ab 128kb -vcodec libx264 -b 1200kb -ar 48000 -mbd 2 -coder 1 -cmp 2 -subcmp 2 -s 368x192 -r 30000/1001 -metadata title=X -f psp -flags loop -trellis 2 -partitions parti4x4+parti8x8+partp4x4+partp8x8+partb8x8 output.mp4
+ffmpeg -i input -acodec libfaac -ab 128k -vcodec libx264 -b 1200k -ar 48000 -mbd 2 -coder 1 -cmp 2 -subcmp 2 -s 368x192 -r 30000/1001 -metadata title=X -f psp -flags loop -trellis 2 -partitions parti4x4+parti8x8+partp4x4+partp8x8+partb8x8 output.mp4
 @item higher resolution for newer PSP firmwares, width<=480, height<=272
 -vcodec libx264 -level 21 -coder 1 -f psp
 @item example command line
-ffmpeg -i input -acodec libfaac -ab 128kb -ac 2 -ar 48000 -vcodec libx264 -level 21 -b 640kb -coder 1 -f psp -flags +loop -trellis 2 -partitions +parti4x4+parti8x8+partp4x4+partp8x8+partb8x8 -g 250 -s 480x272 output.mp4
+ffmpeg -i input -acodec libfaac -ab 128k -ac 2 -ar 48000 -vcodec libx264 -level 21 -b 640k -coder 1 -f psp -flags +loop -trellis 2 -partitions +parti4x4+parti8x8+partp4x4+partp8x8+partb8x8 -g 250 -s 480x272 output.mp4
 @end table
 
 @section Which are good parameters for encoding high quality MPEG-4?
@@ -280,12 +281,13 @@ Just create an "input.avs" text file with this single line ...
 @example
   DirectShowSource("C:\path to your file\yourfile.asf")
 @end example
-... and then feed that text file to FFmpeg:
+... and then feed that text file to ffmpeg:
 @example
   ffmpeg -i input.avs
 @end example
 
-For ANY other help on Avisynth, please visit @url{http://www.avisynth.org/}.
+For ANY other help on Avisynth, please visit the
+@uref{http://www.avisynth.org/, Avisynth homepage}.
 
 @section How can I join video files?
 
@@ -348,7 +350,7 @@ ffmpeg -f u16le -acodec pcm_s16le -ac 2 -ar 44100 -i all.a \
 rm temp[12].[av] all.[av]
 @end example
 
-@section FFmpeg does not adhere to the -maxrate setting, some frames are bigger than maxrate/fps.
+@section The ffmpeg program does not respect the -maxrate setting, some frames are bigger than maxrate/fps.
 
 Read the MPEG spec about video buffer verifier.
 
@@ -417,13 +419,13 @@ No. These tools are too bloated and they complicate the build.
 FFmpeg is already organized in a highly modular manner and does not need to
 be rewritten in a formal object language. Further, many of the developers
 favor straight C; it works for them. For more arguments on this matter,
-read "Programming Religion" at (@url{http://www.tux.org/lkml/#s15}).
+read @uref{http://www.tux.org/lkml/#s15, "Programming Religion"}.
 
 @section Why are the ffmpeg programs devoid of debugging symbols?
 
 The build process creates ffmpeg_g, ffplay_g, etc. which contain full debug
 information. Those binaries are stripped to create ffmpeg, ffplay, etc. If
-you need the debug information, used the *_g versions.
+you need the debug information, use the *_g versions.
 
 @section I do not like the LGPL, can I contribute code under the GPL instead?
 

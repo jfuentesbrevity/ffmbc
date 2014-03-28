@@ -51,17 +51,8 @@ static int mpegvideo_probe(AVProbeData *p)
         }
     }
     if(seq && seq*9<=pic*10 && pic*9<=slice*10 && !pspack && !pes)
-        return pic>1 ? AVPROBE_SCORE_MAX/2+1 : AVPROBE_SCORE_MAX/4; // +1 for .mpg
+        return pic>1 ? AVPROBE_SCORE_MAX/2+1 : AVPROBE_SCORE_MAX/4+1; // +1 for .mpg
     return 0;
 }
 
-AVInputFormat ff_mpegvideo_demuxer = {
-    "mpegvideo",
-    NULL_IF_CONFIG_SMALL("raw MPEG video"),
-    0,
-    mpegvideo_probe,
-    ff_raw_video_read_header,
-    ff_raw_read_partial_packet,
-    .flags= AVFMT_GENERIC_INDEX,
-    .value = CODEC_ID_MPEG1VIDEO,
-};
+FF_DEF_RAWVIDEO_DEMUXER(mpegvideo, "raw MPEG video", mpegvideo_probe, NULL, CODEC_ID_MPEG1VIDEO)

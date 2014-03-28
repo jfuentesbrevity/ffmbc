@@ -38,6 +38,8 @@ typedef struct {
 
 int ff_audio_interleave_init(AVFormatContext *s, const int *samples_per_frame, AVRational time_base);
 void ff_audio_interleave_close(AVFormatContext *s);
+int ff_audio_interleave_new_packet(AVFormatContext *s, AVPacket *pkt,
+                                   int stream_index, int flush);
 
 /**
  * Rechunk audio PCM packets per AudioInterleaveContext->samples_per_frame

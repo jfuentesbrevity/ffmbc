@@ -35,6 +35,14 @@
 
 #include <stdint.h>
 
+/* @name ltp_coef
+ * Table of the LTP coefficients
+ */
+static const float ltp_coef[8] = {
+    0.570829, 0.696616, 0.813004, 0.911304,
+    0.984900, 1.067894, 1.194601, 1.369533,
+};
+
 /* @name tns_tmp2_map
  * Tables of the tmp2[] arrays of LPC coefficients used for TNS.
  * The suffix _M_N[] indicate the values of coef_compress and coef_res

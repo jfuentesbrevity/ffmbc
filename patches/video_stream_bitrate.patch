@@ -1,0 +1,13 @@
+Index: ffprobe.c
+===================================================================
+--- ffprobe.c	(revision 1584)
++++ ffprobe.c	(working copy)
+@@ -218,6 +218,8 @@
+                 printf("interlaced=%s\n", dec_ctx->interlaced == 1 ? "tff" : "bff");
+             else
+                 printf("progressive\n");
++            printf("bit_rate=%s\n", value_string(val_str, sizeof(val_str), dec_ctx->bit_rate,
++                                                 unit_bit_per_second_str));
+             break;
+ 
+         case AVMEDIA_TYPE_AUDIO:

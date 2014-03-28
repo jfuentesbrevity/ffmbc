@@ -21,6 +21,8 @@
 
 #include "libavutil/bswap.h"
 #include "libavutil/crc.h"
+#include "libavutil/dict.h"
+#include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
 #include "libavcodec/mpegvideo.h"
 #include "avformat.h"
@@ -53,6 +55,7 @@ typedef struct MpegTSService {
 } MpegTSService;
 
 typedef struct MpegTSWrite {
+    const AVClass *av_class;
     MpegTSSection pat; /* MPEG2 pat table */
     MpegTSSection sdt; /* MPEG2 sdt table context */
     MpegTSService **services;
@@ -76,23 +79,23 @@ typedef struct MpegTSWrite {
 
 static const AVOption options[] = {
     { "mpegts_transport_stream_id", "Set transport_stream_id field.",
-      offsetof(MpegTSWrite, transport_stream_id), FF_OPT_TYPE_INT, 0x0001, 0x0001, 0xffff, AV_OPT_FLAG_ENCODING_PARAM},
+      offsetof(MpegTSWrite, transport_stream_id), FF_OPT_TYPE_INT, {.dbl = 0x0001 }, 0x0001, 0xffff, AV_OPT_FLAG_ENCODING_PARAM},
     { "mpegts_original_network_id", "Set original_network_id field.",
-      offsetof(MpegTSWrite, original_network_id), FF_OPT_TYPE_INT, 0x0001, 0x0001, 0xffff, AV_OPT_FLAG_ENCODING_PARAM},
+      offsetof(MpegTSWrite, original_network_id), FF_OPT_TYPE_INT, {.dbl = 0x0001 }, 0x0001, 0xffff, AV_OPT_FLAG_ENCODING_PARAM},
     { "mpegts_service_id", "Set service_id field.",
-      offsetof(MpegTSWrite, service_id), FF_OPT_TYPE_INT, 0x0001, 0x0001, 0xffff, AV_OPT_FLAG_ENCODING_PARAM},
+      offsetof(MpegTSWrite, service_id), FF_OPT_TYPE_INT, {.dbl = 0x0001 }, 0x0001, 0xffff, AV_OPT_FLAG_ENCODING_PARAM},
     { "mpegts_pmt_start_pid", "Set the first pid of the PMT.",
-      offsetof(MpegTSWrite, pmt_start_pid), FF_OPT_TYPE_INT, 0x1000, 0x1000, 0x1f00, AV_OPT_FLAG_ENCODING_PARAM},
+      offsetof(MpegTSWrite, pmt_start_pid), FF_OPT_TYPE_INT, {.dbl = 0x1000 }, 0x1000, 0x1f00, AV_OPT_FLAG_ENCODING_PARAM},
     { "mpegts_start_pid", "Set the first pid.",
-      offsetof(MpegTSWrite, start_pid), FF_OPT_TYPE_INT, 0x0100, 0x0100, 0x0f00, AV_OPT_FLAG_ENCODING_PARAM},
+      offsetof(MpegTSWrite, start_pid), FF_OPT_TYPE_INT, {.dbl = 0x0100 }, 0x0100, 0x0f00, AV_OPT_FLAG_ENCODING_PARAM},
     { NULL },
 };
 
 static const AVClass mpegts_muxer_class = {
-    "MPEGTS muxer",
-    av_default_item_name,
-    options,
-    LIBAVUTIL_VERSION_INT,
+    .class_name     = "MPEGTS muxer",
+    .item_name      = av_default_item_name,
+    .option         = options,
+    .version        = LIBAVUTIL_VERSION_INT,
 };
 
 /* NOTE: 4 bytes must be left at the end for the crc32 */
@@ -181,7 +184,7 @@ static int mpegts_write_section1(MpegTSSection *s, int tid, int id,
 /*********************************************/
 /* mpegts writer */
 
-#define DEFAULT_PROVIDER_NAME   "FFmpeg"
+#define DEFAULT_PROVIDER_NAME   "FFmbc"
 #define DEFAULT_SERVICE_NAME    "Service01"
 
 /* a PES packet header is generated every DEFAULT_PES_HEADER_FREQ packets */
@@ -201,6 +204,7 @@ typedef struct MpegTSWriteStream {
     int first_pts_check; ///< first pts check needed
     int64_t payload_pts;
     int64_t payload_dts;
+    int payload_flags;
     uint8_t payload[DEFAULT_PES_PAYLOAD_SIZE];
     ADTSContext *adts;
 } MpegTSWriteStream;
@@ -243,7 +247,7 @@ static void mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
     for(i = 0; i < s->nb_streams; i++) {
         AVStream *st = s->streams[i];
         MpegTSWriteStream *ts_st = st->priv_data;
-        AVMetadataTag *lang = av_metadata_get(st->metadata, "language", NULL,0);
+        AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL,0);
         switch(st->codec->codec_id) {
         case CODEC_ID_MPEG1VIDEO:
         case CODEC_ID_MPEG2VIDEO:
@@ -283,13 +287,38 @@ static void mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
         /* write optional descriptors here */
         switch(st->codec->codec_type) {
         case AVMEDIA_TYPE_AUDIO:
-            if (lang && strlen(lang->value) == 3) {
+            if (lang) {
+                char *p;
+                char *next = lang->value;
+                uint8_t *len_ptr;
+
                 *q++ = 0x0a; /* ISO 639 language descriptor */
-                *q++ = 4;
-                *q++ = lang->value[0];
-                *q++ = lang->value[1];
-                *q++ = lang->value[2];
-                *q++ = 0; /* undefined type */
+                len_ptr = q++;
+                *len_ptr = 0;
+
+                for (p = lang->value; next && *len_ptr < 255 / 4 * 4; p = next + 1) {
+                    next = strchr(p, ',');
+                    if (strlen(p) != 3 && (!next || next != p + 3))
+                        continue; /* not a 3-letter code */
+
+                    *q++ = *p++;
+                    *q++ = *p++;
+                    *q++ = *p++;
+
+                if (st->disposition & AV_DISPOSITION_CLEAN_EFFECTS)
+                    *q++ = 0x01;
+                else if (st->disposition & AV_DISPOSITION_HEARING_IMPAIRED)
+                    *q++ = 0x02;
+                else if (st->disposition & AV_DISPOSITION_VISUAL_IMPAIRED)
+                    *q++ = 0x03;
+                else
+                    *q++ = 0; /* undefined type */
+
+                    *len_ptr += 4;
+                }
+
+                if (*len_ptr == 0)
+                    q -= 2; /* no language codes were written */
             }
             break;
         case AVMEDIA_TYPE_SUBTITLE:
@@ -396,7 +425,7 @@ static MpegTSService *mpegts_add_service(MpegTSWrite *ts,
     service = av_mallocz(sizeof(MpegTSService));
     if (!service)
         return NULL;
-    service->pmt.pid = ts->pmt_start_pid + ts->nb_services - 1;
+    service->pmt.pid = ts->pmt_start_pid + ts->nb_services;
     service->sid = sid;
     service->provider_name = av_strdup(provider_name);
     service->name = av_strdup(name);
@@ -408,7 +437,7 @@ static MpegTSService *mpegts_add_service(MpegTSWrite *ts,
 static void section_write_packet(MpegTSSection *s, const uint8_t *packet)
 {
     AVFormatContext *ctx = s->opaque;
-    put_buffer(ctx->pb, packet, TS_PACKET_SIZE);
+    avio_write(ctx->pb, packet, TS_PACKET_SIZE);
 }
 
 static int mpegts_write_header(AVFormatContext *s)
@@ -417,7 +446,7 @@ static int mpegts_write_header(AVFormatContext *s)
     MpegTSWriteStream *ts_st;
     MpegTSService *service;
     AVStream *st, *pcr_st = NULL;
-    AVMetadataTag *title, *provider;
+    AVDictionaryEntry *title, *provider;
     int i, j;
     const char *service_name;
     const char *provider_name;
@@ -426,11 +455,11 @@ static int mpegts_write_header(AVFormatContext *s)
     ts->tsid = ts->transport_stream_id;
     ts->onid = ts->original_network_id;
     /* allocate a single DVB service */
-    title = av_metadata_get(s->metadata, "service_name", NULL, 0);
+    title = av_dict_get(s->metadata, "service_name", NULL, 0);
     if (!title)
-        title = av_metadata_get(s->metadata, "title", NULL, 0);
+        title = av_dict_get(s->metadata, "title", NULL, 0);
     service_name = title ? title->value : DEFAULT_SERVICE_NAME;
-    provider = av_metadata_get(s->metadata, "service_provider", NULL, 0);
+    provider = av_dict_get(s->metadata, "service_provider", NULL, 0);
     provider_name = provider ? provider->value : DEFAULT_PROVIDER_NAME;
     service = mpegts_add_service(ts, ts->service_id, provider_name, service_name);
     service->pmt.write_packet = section_write_packet;
@@ -454,6 +483,7 @@ static int mpegts_write_header(AVFormatContext *s)
     /* assign pids to each stream */
     for(i = 0;i < s->nb_streams; i++) {
         st = s->streams[i];
+        av_set_pts_info(st, 33, 1, 90000);
         ts_st = av_mallocz(sizeof(MpegTSWriteStream));
         if (!ts_st)
             goto fail;
@@ -554,7 +584,7 @@ static int mpegts_write_header(AVFormatContext *s)
            service->pcr_packet_period,
            ts->sdt_packet_period, ts->pat_packet_period);
 
-    put_flush_packet(s->pb);
+    avio_flush(s->pb);
 
     return 0;
 
@@ -562,7 +592,7 @@ static int mpegts_write_header(AVFormatContext *s)
     av_free(pids);
     for(i = 0;i < s->nb_streams; i++) {
         st = s->streams[i];
-        av_free(st->priv_data);
+        av_freep(&st->priv_data);
     }
     return -1;
 }
@@ -586,13 +616,13 @@ static void retransmit_si_info(AVFormatContext *s)
     }
 }
 
-static int64_t get_pcr(const MpegTSWrite *ts, ByteIOContext *pb)
+static int64_t get_pcr(const MpegTSWrite *ts, AVIOContext *pb)
 {
-    return av_rescale(url_ftell(pb) + 11, 8 * PCR_TIME_BASE, ts->mux_rate) +
+    return av_rescale(avio_tell(pb) + 11, 8 * PCR_TIME_BASE, ts->mux_rate) +
            ts->first_pcr;
 }
 
-static uint8_t* write_pcr_bits(uint8_t *buf, int64_t pcr)
+static int write_pcr_bits(uint8_t *buf, int64_t pcr)
 {
     int64_t pcr_low = pcr % 300, pcr_high = pcr / 300;
 
@@ -603,7 +633,7 @@ static uint8_t* write_pcr_bits(uint8_t *buf, int64_t pcr)
     *buf++ = pcr_high << 7 | pcr_low >> 8 | 0x7e;
     *buf++ = pcr_low;
 
-    return buf;
+    return 6;
 }
 
 /* Write a single null transport stream packet */
@@ -618,7 +648,7 @@ static void mpegts_insert_null_packet(AVFormatContext *s)
     *q++ = 0xff;
     *q++ = 0x10;
     memset(q, 0x0FF, TS_PACKET_SIZE - (q - buf));
-    put_buffer(s->pb, buf, TS_PACKET_SIZE);
+    avio_write(s->pb, buf, TS_PACKET_SIZE);
 }
 
 /* Write a single transport stream packet with a PCR and no payload */
@@ -639,11 +669,11 @@ static void mpegts_insert_pcr_only(AVFormatContext *s, AVStream *st)
     *q++ = 0x10;               /* Adaptation flags: PCR present */
 
     /* PCR coded into 6 bytes */
-    q = write_pcr_bits(q, get_pcr(ts, s->pb));
+    q += write_pcr_bits(q, get_pcr(ts, s->pb));
 
     /* stuffing bytes */
     memset(q, 0xFF, TS_PACKET_SIZE - (q - buf));
-    put_buffer(s->pb, buf, TS_PACKET_SIZE);
+    avio_write(s->pb, buf, TS_PACKET_SIZE);
 }
 
 static void write_pts(uint8_t *q, int fourbits, int64_t pts)
@@ -660,6 +690,39 @@ static void write_pts(uint8_t *q, int fourbits, int64_t pts)
     *q++ = val;
 }
 
+/* Set an adaptation field flag in an MPEG-TS packet*/
+static void set_af_flag(uint8_t *pkt, int flag)
+{
+    // expect at least one flag to set
+    assert(flag);
+
+    if ((pkt[3] & 0x20) == 0) {
+        // no AF yet, set adaptation field flag
+        pkt[3] |= 0x20;
+        // 1 byte length, no flags
+        pkt[4] = 1;
+        pkt[5] = 0;
+    }
+    pkt[5] |= flag;
+}
+
+/* Extend the adaptation field by size bytes */
+static void extend_af(uint8_t *pkt, int size)
+{
+    // expect already existing adaptation field
+    assert(pkt[3] & 0x20);
+    pkt[4] += size;
+}
+
+/* Get a pointer to MPEG-TS payload (right after TS packet header) */
+static uint8_t *get_ts_payload_start(uint8_t *pkt)
+{
+    if (pkt[3] & 0x20)
+        return pkt + 5 + pkt[4];
+    else
+        return pkt + 4;
+}
+
 /* Add a pes header to the front of payload, and segment into an integer number of
  * ts packets. The final ts packet is padded using an over-sized adaptation header
  * to exactly fill the last ts packet.
@@ -667,7 +730,7 @@ static void write_pts(uint8_t *q, int fourbits, int64_t pts)
  */
 static void mpegts_write_pes(AVFormatContext *s, AVStream *st,
                              const uint8_t *payload, int payload_size,
-                             int64_t pts, int64_t dts)
+                             int64_t pts, int64_t dts, int key)
 {
     MpegTSWriteStream *ts_st = st->priv_data;
     MpegTSWrite *ts = s->priv_data;
@@ -712,8 +775,17 @@ static void mpegts_write_pes(AVFormatContext *s, AVStream *st,
         *q++ = val;
         *q++ = ts_st->pid;
         ts_st->cc = (ts_st->cc + 1) & 0xf;
-        *q++ = 0x10 | ts_st->cc | (write_pcr ? 0x20 : 0);
+        *q++ = 0x10 | ts_st->cc; // payload indicator + CC
+        if (key && is_start && pts != AV_NOPTS_VALUE) {
+            // set Random Access for key frames
+            if (ts_st->pid == ts_st->service->pcr_pid)
+                write_pcr = 1;
+            set_af_flag(buf, 0x40);
+            q = get_ts_payload_start(buf);
+        }
         if (write_pcr) {
+            set_af_flag(buf, 0x10);
+            q = get_ts_payload_start(buf);
             // add 11, pcr references the last byte of program clock reference base
             if (ts->mux_rate > 1)
                 pcr = get_pcr(ts, s->pb);
@@ -721,9 +793,8 @@ static void mpegts_write_pes(AVFormatContext *s, AVStream *st,
                 pcr = (dts - delay)*300;
             if (dts != AV_NOPTS_VALUE && dts < pcr / 300)
                 av_log(s, AV_LOG_WARNING, "dts < pcr, TS is invalid\n");
-            *q++ = 7; /* AFC length */
-            *q++ = 0x10; /* flags: PCR present */
-            q = write_pcr_bits(q, pcr);
+            extend_af(buf, write_pcr_bits(q, pcr));
+            q = get_ts_payload_start(buf);
         }
         if (is_start) {
             int pes_extension = 0;
@@ -739,7 +810,8 @@ static void mpegts_write_pes(AVFormatContext *s, AVStream *st,
                     *q++ = 0xe0;
             } else if (st->codec->codec_type == AVMEDIA_TYPE_AUDIO &&
                        (st->codec->codec_id == CODEC_ID_MP2 ||
-                        st->codec->codec_id == CODEC_ID_MP3)) {
+                        st->codec->codec_id == CODEC_ID_MP3 ||
+                        st->codec->codec_id == CODEC_ID_AAC)) {
                 *q++ = 0xc0;
             } else {
                 *q++ = 0xbd;
@@ -837,9 +909,9 @@ static void mpegts_write_pes(AVFormatContext *s, AVStream *st,
         memcpy(buf + TS_PACKET_SIZE - len, payload, len);
         payload += len;
         payload_size -= len;
-        put_buffer(s->pb, buf, TS_PACKET_SIZE);
+        avio_write(s->pb, buf, TS_PACKET_SIZE);
     }
-    put_flush_packet(s->pb);
+    avio_flush(s->pb);
 }
 
 static int mpegts_write_packet(AVFormatContext *s, AVPacket *pkt)
@@ -851,6 +923,7 @@ static int mpegts_write_packet(AVFormatContext *s, AVPacket *pkt)
     MpegTSWriteStream *ts_st = st->priv_data;
     const uint64_t delay = av_rescale(s->max_delay, 90000, AV_TIME_BASE)*2;
     int64_t dts = AV_NOPTS_VALUE, pts = AV_NOPTS_VALUE;
+    int flags = pkt->flags;
 
     if (pkt->pts != AV_NOPTS_VALUE)
         pts = pkt->pts + delay;
@@ -925,12 +998,13 @@ static int mpegts_write_packet(AVFormatContext *s, AVPacket *pkt)
             MpegTSWriteStream *ts_st = st->priv_data;
             if (ts_st->payload_index > 0) {
                 mpegts_write_pes(s, st, ts_st->payload, ts_st->payload_index,
-                                 ts_st->payload_pts, ts_st->payload_dts);
+                                 ts_st->payload_pts, ts_st->payload_dts,
+                                 st->codec->codec_type == AVMEDIA_TYPE_AUDIO);
                 ts_st->payload_index = 0;
             }
         }
         // for video and subtitle, write a single pes packet
-        mpegts_write_pes(s, st, buf, size, pts, dts);
+        mpegts_write_pes(s, st, buf, size, pts, dts, pkt->flags & AV_PKT_FLAG_KEY);
         av_free(data);
         return 0;
     }
@@ -939,13 +1013,15 @@ static int mpegts_write_packet(AVFormatContext *s, AVPacket *pkt)
         if (ts_st->payload_index > 0 &&
             ts_st->payload_index + size > DEFAULT_PES_PAYLOAD_SIZE) {
             mpegts_write_pes(s, st, ts_st->payload, ts_st->payload_index,
-                             ts_st->payload_pts, ts_st->payload_dts);
+                             ts_st->payload_pts, ts_st->payload_dts, 1);
             ts_st->payload_index = 0;
         }
 
         if (!ts_st->payload_index) {
             ts_st->payload_pts = pts;
             ts_st->payload_dts = dts;
+            ts_st->payload_flags = flags;
+            flags = 0;
             dts = AV_NOPTS_VALUE;
             pts = AV_NOPTS_VALUE;
         }
@@ -975,11 +1051,12 @@ static int mpegts_write_end(AVFormatContext *s)
         ts_st = st->priv_data;
         if (ts_st->payload_index > 0) {
             mpegts_write_pes(s, st, ts_st->payload, ts_st->payload_index,
-                             ts_st->payload_pts, ts_st->payload_dts);
+                             ts_st->payload_pts, ts_st->payload_dts,
+                             ts_st->payload_flags & AV_PKT_FLAG_KEY);
         }
         av_freep(&ts_st->adts);
     }
-    put_flush_packet(s->pb);
+    avio_flush(s->pb);
 
     for(i = 0; i < ts->nb_services; i++) {
         service = ts->services[i];
@@ -993,15 +1070,15 @@ static int mpegts_write_end(AVFormatContext *s)
 }
 
 AVOutputFormat ff_mpegts_muxer = {
-    "mpegts",
-    NULL_IF_CONFIG_SMALL("MPEG-2 transport stream format"),
-    "video/x-mpegts",
-    "ts,m2t",
-    sizeof(MpegTSWrite),
-    CODEC_ID_MP2,
-    CODEC_ID_MPEG2VIDEO,
-    mpegts_write_header,
-    mpegts_write_packet,
-    mpegts_write_end,
+    .name              = "mpegts",
+    .long_name         = NULL_IF_CONFIG_SMALL("MPEG-2 transport stream format"),
+    .mime_type         = "video/x-mpegts",
+    .extensions        = "ts,m2t",
+    .priv_data_size    = sizeof(MpegTSWrite),
+    .audio_codec       = CODEC_ID_MP2,
+    .video_codec       = CODEC_ID_MPEG2VIDEO,
+    .write_header      = mpegts_write_header,
+    .write_packet      = mpegts_write_packet,
+    .write_trailer     = mpegts_write_end,
     .priv_class = &mpegts_muxer_class,
 };

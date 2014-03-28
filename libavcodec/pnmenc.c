@@ -39,7 +39,7 @@ static int pnm_encode_frame(AVCodecContext *avctx, unsigned char *outbuf,
     }
 
     *p           = *pict;
-    p->pict_type = FF_I_TYPE;
+    p->pict_type = AV_PICTURE_TYPE_I;
     p->key_frame = 1;
 
     s->bytestream_start =
@@ -120,6 +120,7 @@ AVCodec ff_pgm_encoder = {
     sizeof(PNMContext),
     ff_pnm_init,
     pnm_encode_frame,
+    .capabilities = CODEC_CAP_LOSSLESS,
     .pix_fmts  = (const enum PixelFormat[]){PIX_FMT_GRAY8, PIX_FMT_GRAY16BE, PIX_FMT_NONE},
     .long_name = NULL_IF_CONFIG_SMALL("PGM (Portable GrayMap) image"),
 };
@@ -133,6 +134,7 @@ AVCodec ff_pgmyuv_encoder = {
     sizeof(PNMContext),
     ff_pnm_init,
     pnm_encode_frame,
+    .capabilities = CODEC_CAP_LOSSLESS,
     .pix_fmts  = (const enum PixelFormat[]){PIX_FMT_YUV420P, PIX_FMT_NONE},
     .long_name = NULL_IF_CONFIG_SMALL("PGMYUV (Portable GrayMap YUV) image"),
 };
@@ -146,6 +148,7 @@ AVCodec ff_ppm_encoder = {
     sizeof(PNMContext),
     ff_pnm_init,
     pnm_encode_frame,
+    .capabilities = CODEC_CAP_LOSSLESS,
     .pix_fmts  = (const enum PixelFormat[]){PIX_FMT_RGB24, PIX_FMT_RGB48BE, PIX_FMT_NONE},
     .long_name = NULL_IF_CONFIG_SMALL("PPM (Portable PixelMap) image"),
 };
@@ -159,6 +162,7 @@ AVCodec ff_pbm_encoder = {
     sizeof(PNMContext),
     ff_pnm_init,
     pnm_encode_frame,
+    .capabilities = CODEC_CAP_LOSSLESS,
     .pix_fmts  = (const enum PixelFormat[]){PIX_FMT_MONOWHITE, PIX_FMT_NONE},
     .long_name = NULL_IF_CONFIG_SMALL("PBM (Portable BitMap) image"),
 };

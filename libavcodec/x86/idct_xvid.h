@@ -18,7 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/*!
+/**
  * @file
  * header for Xvid IDCT functions
  */
@@ -34,6 +34,7 @@ void ff_idct_xvid_sse2(short *block);
 void ff_idct_xvid_sse2_put(uint8_t *dest, int line_size, short *block);
 void ff_idct_xvid_sse2_add(uint8_t *dest, int line_size, short *block);
 
-void ff_idct10_xvid_sse2(short *block);
+void ff_idct_10_xvid_sse2(short *block);
+void ff_idct_10_xvid_put_clamped_sse2(uint8_t *dest, int line_size, short *block);
 
 #endif /* AVCODEC_X86_IDCT_XVID_H */

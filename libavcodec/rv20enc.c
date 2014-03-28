@@ -32,7 +32,7 @@
 void rv20_encode_picture_header(MpegEncContext *s, int picture_number){
     put_bits(&s->pb, 2, s->pict_type); //I 0 vs. 1 ?
     put_bits(&s->pb, 1, 0);     /* unknown bit */
-    put_bits(&s->pb, 5, s->qp);
+    put_bits(&s->pb, 5, s->qscale);
 
     put_sbits(&s->pb, 8, picture_number); //FIXME wrong, but correct is not known
     s->mb_x= s->mb_y= 0;
@@ -47,7 +47,7 @@ void rv20_encode_picture_header(MpegEncContext *s, int picture_number){
     assert(s->modified_quant==1);
     assert(s->loop_filter==1);
 
-    s->h263_aic= s->pict_type == FF_I_TYPE;
+    s->h263_aic= s->pict_type == AV_PICTURE_TYPE_I;
     if(s->h263_aic){
         s->y_dc_scale_table=
         s->c_dc_scale_table= ff_aic_dc_scale_table;

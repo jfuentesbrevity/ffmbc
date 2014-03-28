@@ -1,0 +1,16 @@
+IN 0.7-RC8.1:
+Added support for alpha channel in QTRLE and DNXHD
+
+THESE PATCHES STILL SEEM TO APPLY:
+raw_rgb48.patch
+version.patch
+video_stream_bitrate.patch
+lxfdec.patch
+img2_start_frame_opt.patch
+
+THIS PATCH NO LONGER APPLIES:
+mxf_opatom_audio
+
+THIS PATCH PARTIALLY APPLIES:
+dnxhd_added_bitrates (only 2nd diff still applies)
+

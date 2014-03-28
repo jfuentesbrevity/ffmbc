@@ -21,62 +21,24 @@
 
 #include <strings.h>
 #include "avformat.h"
+#include "avio_internal.h"
 #include "id3v1.h"
 #include "id3v2.h"
+#include "rawenc.h"
+#include "libavutil/avstring.h"
+#include "libavcodec/mpegaudio.h"
+#include "libavcodec/mpegaudiodata.h"
+#include "libavcodec/mpegaudiodecheader.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
+#include "libavcodec/mpegaudio.h"
+#include "libavcodec/mpegaudiodata.h"
+#include "libavcodec/mpegaudiodecheader.h"
+#include "libavformat/avio_internal.h"
+#include "libavutil/dict.h"
 #include "libavutil/avstring.h"
 
-#if 0
-static int id3v1_set_string(AVFormatContext *s, const char *key,
-                            uint8_t *buf, int buf_size)
-{
-    AVMetadataTag *tag;
-    if ((tag = av_metadata_get(s->metadata, key, NULL, 0)))
-        strncpy(buf, tag->value, buf_size);
-    return !!tag;
-}
-
-static int id3v1_create_tag(AVFormatContext *s, uint8_t *buf)
-{
-    AVMetadataTag *tag;
-    int i, count = 0;
-
-    memset(buf, 0, ID3v1_TAG_SIZE); /* fail safe */
-    buf[0] = 'T';
-    buf[1] = 'A';
-    buf[2] = 'G';
-    count += id3v1_set_string(s, "TIT2",    buf +  3, 30);       //title
-    count += id3v1_set_string(s, "TPE1",    buf + 33, 30);       //author|artist
-    count += id3v1_set_string(s, "TALB",    buf + 63, 30);       //album
-    count += id3v1_set_string(s, "TDRL",    buf + 93,  4);       //date
-    count += id3v1_set_string(s, "comment", buf + 97, 30);
-    if ((tag = av_metadata_get(s->metadata, "TRCK", NULL, 0))) { //track
-        buf[125] = 0;
-        buf[126] = atoi(tag->value);
-        count++;
-    }
-    buf[127] = 0xFF; /* default to unknown genre */
-    if ((tag = av_metadata_get(s->metadata, "TCON", NULL, 0))) { //genre
-        for(i = 0; i <= ID3v1_GENRE_MAX; i++) {
-            if (!strcasecmp(tag->value, ff_id3v1_genre_str[i])) {
-                buf[127] = i;
-                count++;
-                break;
-            }
-        }
-    }
-    return count;
-}
-#endif
-
 /* simple formats */
-
-static int is_ascii(const uint8_t *str)
-{
-    while (*str && *str < 128) str++;
-    return !*str;
-}
 
 static int len_put_str16(const char *str)
 {
@@ -94,11 +56,33 @@ static int len_put_str16(const char *str)
 
 static void id3v2_put_size(AVFormatContext *s, int size)
 {
-    put_byte(s->pb, size >> 21 & 0x7f);
-    put_byte(s->pb, size >> 14 & 0x7f);
-    put_byte(s->pb, size >> 7  & 0x7f);
-    put_byte(s->pb, size       & 0x7f);
+    avio_w8(s->pb, size >> 21 & 0x7f);
+    avio_w8(s->pb, size >> 14 & 0x7f);
+    avio_w8(s->pb, size >> 7  & 0x7f);
+    avio_w8(s->pb, size       & 0x7f);
 }
+
+static int string_is_ascii(const uint8_t *str)
+{
+    while (*str && *str < 128) str++;
+    return !*str;
+}
+
+#define VBR_NUM_BAGS 400
+#define VBR_TOC_SIZE 100
+typedef struct MP3Context {
+    const AVClass *class;
+    int id3v2_version;
+    int64_t frames_offset;
+    int32_t frames;
+    int32_t size;
+    uint32_t want;
+    uint32_t seen;
+    uint32_t pos;
+    uint64_t bag[VBR_NUM_BAGS];
+    int initial_bitrate;
+    int has_variable_bitrate;
+} MP3Context;
 
 static int id3v2_put_tag(AVFormatContext *s, const char *key, const char *value, int version)
 {
@@ -106,7 +90,7 @@ static int id3v2_put_tag(AVFormatContext *s, const char *key, const char *value,
 
     if (version == 4)
         encoding = 3; // utf-8
-    else if (is_ascii(value))
+    else if (string_is_ascii(value))
         encoding = 0; // iso-8859-1
     else
         encoding = 1; // utf-16be
@@ -116,23 +100,23 @@ static int id3v2_put_tag(AVFormatContext *s, const char *key, const char *value,
     else
         len = strlen(value)+1;
 
-    put_tag(s->pb, key);
+    avio_wtag(s->pb, key);
     if (version == 4)
         id3v2_put_size(s, 1+len);
     else
-        put_be32(s->pb, 1+len);
-    put_be16(s->pb, 0);
-    put_byte(s->pb, encoding);
+        avio_wb32(s->pb, 1+len);
+    avio_wb16(s->pb, 0);
+    avio_w8(s->pb, encoding);
     if (encoding == 1) {
-        put_be16(s->pb, 0xfffe); // BOM
+        avio_wb16(s->pb, 0xfffe); // BOM
         avio_put_str16le(s->pb, value);
     } else {
-        put_buffer(s->pb, value, len);
+        avio_write(s->pb, value, len);
     }
     return 4+4+2+1+len;
 }
 
-static int id3v2_put_apic(AVFormatContext *s, AVMetadataTag *tag, int version)
+static int id3v2_put_apic(AVFormatContext *s, AVDictionaryEntry *tag, int version)
 {
     const char *mime = av_metadata_get_attribute(tag, "mime");
     int len;
@@ -140,29 +124,29 @@ static int id3v2_put_apic(AVFormatContext *s, AVMetadataTag *tag, int version)
         av_log(s, AV_LOG_ERROR, "error, no mime type set for cover\n");
         return 0;
     }
-    put_tag(s->pb, "APIC");
+    avio_wtag(s->pb, "APIC");
     len = 1+strlen(mime)+1+1+1+tag->len;
     if (version == 4)
         id3v2_put_size(s, len);
     else
-        put_be32(s->pb, len);
-    put_be16(s->pb, 0); // flags
-    put_byte(s->pb, 0); // encoding
+        avio_wb32(s->pb, len);
+    avio_wb16(s->pb, 0); // flags
+    avio_w8(s->pb, 0); // encoding
     avio_put_str(s->pb, mime);
-    put_byte(s->pb, 3); // type, cover front
-    put_byte(s->pb, 0); // description
-    put_buffer(s->pb, tag->value, tag->len);
+    avio_w8(s->pb, 3); // type, cover front
+    avio_w8(s->pb, 0); // description
+    avio_write(s->pb, tag->value, tag->len);
     return 4+4+2+len;
 }
 
-static int id3v2_put_uslt(AVFormatContext *s, AVMetadataTag *tag, int version)
+static int id3v2_put_uslt(AVFormatContext *s, AVDictionaryEntry *tag, int version)
 {
     const char *lang = av_metadata_get_attribute(tag, "language");
     int data_len, len, encoding;
 
     if (version == 4)
         encoding = 3; // utf-8
-    else if (is_ascii(tag->value))
+    else if (string_is_ascii(tag->value))
         encoding = 0; // iso-8859-1
     else
         encoding = 1; // utf-16be
@@ -173,107 +157,236 @@ static int id3v2_put_uslt(AVFormatContext *s, AVMetadataTag *tag, int version)
         data_len = 1 + strlen(tag->value)+1;
     len = 1+3+data_len;
 
-    put_tag(s->pb, "USLT");
+    avio_wtag(s->pb, "USLT");
     if (version == 4)
         id3v2_put_size(s, len);
     else
-        put_be32(s->pb, len);
-    put_be16(s->pb, 0); // flags
-    put_byte(s->pb, encoding);
+        avio_wb32(s->pb, len);
+    avio_wb16(s->pb, 0); // flags
+    avio_w8(s->pb, encoding);
     if (!lang)
         lang = "eng";
-    put_byte(s->pb, lang[0]);
-    put_byte(s->pb, lang[1]);
-    put_byte(s->pb, lang[2]);
+    avio_w8(s->pb, lang[0]);
+    avio_w8(s->pb, lang[1]);
+    avio_w8(s->pb, lang[2]);
     if (encoding != 1) {
-        put_byte(s->pb, 0); // description
+        avio_w8(s->pb, 0); // description
         avio_put_str(s->pb, tag->value);
     } else {
-        put_be16(s->pb, 0xfffe); // BOM
-        put_be16(s->pb, 0); // description
-        put_be16(s->pb, 0xfffe);
+        avio_wb16(s->pb, 0xfffe); // BOM
+        avio_wb16(s->pb, 0); // description
+        avio_wb16(s->pb, 0xfffe);
         avio_put_str16le(s->pb, tag->value);
     }
     return 4+4+2+len;
 }
 
-static int mp3_write_packet(struct AVFormatContext *s, AVPacket *pkt)
-{
-    put_buffer(s->pb, pkt->data, pkt->size);
-    put_flush_packet(s->pb);
-    return 0;
-}
-
-#if 0
-static int mp3_write_trailer(struct AVFormatContext *s)
-{
-    uint8_t buf[ID3v1_TAG_SIZE];
-
-    /* write the id3v1 tag */
-    if (id3v1_create_tag(s, buf) > 0) {
-        put_buffer(s->pb, buf, ID3v1_TAG_SIZE);
-        put_flush_packet(s->pb);
-    }
-    return 0;
-}
-#endif
-
 #if CONFIG_MP2_MUXER
 AVOutputFormat ff_mp2_muxer = {
-    "mp2",
-    NULL_IF_CONFIG_SMALL("MPEG audio layer 2"),
-    "audio/x-mpeg",
-    "mp2,m2a",
-    0,
-    CODEC_ID_MP2,
-    CODEC_ID_NONE,
-    NULL,
-    mp3_write_packet,
+    .name              = "mp2",
+    .long_name         = NULL_IF_CONFIG_SMALL("MPEG audio layer 2"),
+    .mime_type         = "audio/x-mpeg",
+    .extensions        = "mp2,m2a",
+    .audio_codec       = CODEC_ID_MP2,
+    .video_codec       = CODEC_ID_NONE,
+    .write_packet      = ff_raw_write_packet,
 };
 #endif
 
 #if CONFIG_MP3_MUXER
-typedef struct MP3Context {
-    const AVClass *class;
-    int id3v2_version;
-} MP3Context;
 
 static const AVOption options[] = {
     { "id3v2_version", "Select ID3v2 version to write. Currently 3 and 4 are supported.",
-      offsetof(MP3Context, id3v2_version), FF_OPT_TYPE_INT, 3, 3, 4, AV_OPT_FLAG_ENCODING_PARAM},
+      offsetof(MP3Context, id3v2_version), FF_OPT_TYPE_INT, {.dbl = 3}, 3, 4, AV_OPT_FLAG_ENCODING_PARAM},
     { NULL },
 };
 
 static const AVClass mp3_muxer_class = {
-    "MP3 muxer",
-    av_default_item_name,
-    options,
-    LIBAVUTIL_VERSION_INT,
+    .class_name     = "MP3 muxer",
+    .item_name      = av_default_item_name,
+    .option         = options,
+    .version        = LIBAVUTIL_VERSION_INT,
 };
 
-static int id3v2_check_write_tag(AVFormatContext *s, AVMetadataTag *t,
-                                 const char table[][4], int version)
+static int id3v2_write_tag(AVFormatContext *s, AVDictionaryEntry *t)
 {
     MP3Context *mp3 = s->priv_data;
-    int i;
+    int version = mp3->id3v2_version;
+    int version_flags, i;
 
-    if (!strcmp(t->key, "APIC"))
+    if (!strcmp(t->key, "cover"))
         return id3v2_put_apic(s, t, version);
-    else if (!strcmp(t->key, "USLT"))
+    else if (!strcmp(t->key, "lyrics"))
         return id3v2_put_uslt(s, t, version);
-    else if (t->key[0] != 'T' || strlen(t->key) != 4)
-        return 0;
 
-    if (!table) {
-        table = mp3->id3v2_version == 3 ?
-            ff_id3v2_3_tags : ff_id3v2_4_tags;
-    }
+    version_flags = version == 4 ? 2 : 1;
 
-    for (i = 0; *table[i]; i++) {
-        if (AV_RB32(t->key) == AV_RB32(table[i]))
-            return id3v2_put_tag(s, t->key, t->value, version);
+    for (i = 0; ff_id3v2_tags[i].tag; i++) {
+        if (!strcmp(t->key, ff_id3v2_tags[i].name) &&
+            ff_id3v2_tags[i].valid_version & version_flags) {
+            return id3v2_put_tag(s, ff_id3v2_tags[i].tag, t->value, version);
+        }
     }
     return 0;
+}
+
+static const int64_t xing_offtbl[2][2] = {{32, 17}, {17,9}};
+
+/*
+ * Write an empty XING header and initialize respective data.
+ */
+static int mp3_write_xing(AVFormatContext *s)
+{
+    AVCodecContext   *codec = s->streams[0]->codec;
+    MP3Context       *mp3 = s->priv_data;
+    int              bitrate_idx;
+    int              best_bitrate_idx;
+    int              best_bitrate_error= INT_MAX;
+    int64_t          xing_offset;
+    int32_t          mask, header;
+    MPADecodeHeader  c;
+    int              srate_idx, i, channels;
+    int              needed;
+
+    for (i = 0; i < FF_ARRAY_ELEMS(ff_mpa_freq_tab); i++)
+        if (ff_mpa_freq_tab[i] == codec->sample_rate) {
+            srate_idx = i;
+            break;
+        }
+    if (i == FF_ARRAY_ELEMS(ff_mpa_freq_tab)) {
+        av_log(s, AV_LOG_ERROR, "Unsupported sample rate.\n");
+        return -1;
+    }
+
+    switch (codec->channels) {
+    case 1:  channels = MPA_MONO;                                          break;
+    case 2:  channels = MPA_STEREO;                                        break;
+    default: av_log(s, AV_LOG_ERROR, "Unsupported number of channels.\n"); return -1;
+    }
+
+    /* dummy MPEG audio header */
+    header  =  0xff                                  << 24; // sync
+    header |= (0x7 << 5 | 0x3 << 3 | 0x1 << 1 | 0x1) << 16; // sync/mpeg-1/layer 3/no crc*/
+    header |= (srate_idx << 2) <<  8;
+    header |= channels << 6;
+
+    for (bitrate_idx=1; bitrate_idx<15; bitrate_idx++) {
+        int error;
+        ff_mpegaudio_decode_header(&c, header | (bitrate_idx << (4+8)));
+        error= FFABS(c.bit_rate - codec->bit_rate);
+        if(error < best_bitrate_error){
+            best_bitrate_error= error;
+            best_bitrate_idx  = bitrate_idx;
+        }
+    }
+
+    for (bitrate_idx= best_bitrate_idx;; bitrate_idx++) {
+        if (15 == bitrate_idx)
+            return -1;
+
+        mask = (bitrate_idx << 4) <<  8;
+        header |= mask;
+        ff_mpegaudio_decode_header(&c, header);
+        xing_offset=xing_offtbl[c.lsf == 1][c.nb_channels == 1];
+        needed = 4              // header
+               + xing_offset
+               + 4              // xing tag
+               + 4              // frames/size/toc flags
+               + 4              // frames
+               + 4              // size
+               + VBR_TOC_SIZE;  // toc
+
+        if (needed <= c.frame_size)
+            break;
+
+        header &= ~mask;
+        ++bitrate_idx;
+    }
+
+    avio_wb32(s->pb, header);
+    avio_fill(s->pb, 0, xing_offset);
+    avio_wb32(s->pb, MKBETAG('X', 'i', 'n', 'g'));
+    avio_wb32(s->pb, 0x01 | 0x02 | 0x04);  // frames/size/toc
+
+    mp3->frames_offset = avio_tell(s->pb);
+    mp3->size = c.frame_size;
+    mp3->want=1;
+    mp3->seen=0;
+    mp3->pos=0;
+
+    avio_wb32(s->pb, 0);  // frames
+    avio_wb32(s->pb, 0);  // size
+
+    // toc
+    for (i = 0; i < VBR_TOC_SIZE; ++i)
+        avio_w8(s->pb, (uint8_t)(255 * i / VBR_TOC_SIZE));
+
+    avio_fill(s->pb, 0, c.frame_size - needed);
+    avio_flush(s->pb);
+
+    return 0;
+}
+
+/*
+ * Add a frame to XING data.
+ * Following lame's "VbrTag.c".
+ */
+static void mp3_xing_add_frame(AVFormatContext *s, AVPacket *pkt)
+{
+    MP3Context  *mp3 = s->priv_data;
+    int i;
+
+    ++mp3->frames;
+    mp3->size += pkt->size;
+
+    if (mp3->want == ++mp3->seen) {
+        mp3->bag[mp3->pos] = mp3->size;
+
+        if (VBR_NUM_BAGS == ++mp3->pos) {
+            /* shrink table to half size by throwing away each second bag. */
+            for (i = 1; i < VBR_NUM_BAGS; i += 2)
+                mp3->bag[i >> 1] = mp3->bag[i];
+
+            /* double wanted amount per bag. */
+            mp3->want <<= 1;
+            /* adjust current position to half of table size. */
+            mp3->pos >>= 1;
+        }
+
+        mp3->seen = 0;
+    }
+}
+
+static void mp3_fix_xing(AVFormatContext *s)
+{
+    MP3Context  *mp3 = s->priv_data;
+    int i;
+
+    avio_flush(s->pb);
+
+    /* replace "Xing" identification string with "Info" for CBR files. */
+    if (!mp3->has_variable_bitrate) {
+        int64_t tag_offset = mp3->frames_offset
+            - 4   // frames/size/toc flags
+            - 4;  // xing tag
+        avio_seek(s->pb, tag_offset, SEEK_SET);
+        avio_wb32(s->pb, MKBETAG('I', 'n', 'f', 'o'));
+    }
+
+    avio_seek(s->pb, mp3->frames_offset, SEEK_SET);
+    avio_wb32(s->pb, mp3->frames);
+    avio_wb32(s->pb, mp3->size);
+
+    avio_w8(s->pb, 0);  // first toc entry has to be zero.
+
+    for (i = 1; i < VBR_TOC_SIZE; ++i) {
+        int j = i * mp3->pos / VBR_TOC_SIZE;
+        int seek_point = 256LL * mp3->bag[j] / mp3->size;
+        avio_w8(s->pb, FFMIN(seek_point, 255));
+    }
+
+    avio_flush(s->pb);
+    avio_seek(s->pb, 0, SEEK_END);
 }
 
 /**
@@ -282,52 +395,141 @@ static int id3v2_check_write_tag(AVFormatContext *s, AVMetadataTag *t,
 
 static int mp3_write_header(struct AVFormatContext *s)
 {
-    MP3Context *mp3 = s->priv_data;
-    AVMetadataTag *t = NULL;
+    MP3Context  *mp3 = s->priv_data;
+    AVDictionaryEntry *t;
     int totlen = 0;
     int64_t size_pos, cur_pos;
-    AVMetadata *metadata = NULL;
 
-    put_be32(s->pb, MKBETAG('I', 'D', '3', mp3->id3v2_version));
-    put_byte(s->pb, 0);
-    put_byte(s->pb, 0); /* flags */
+    avio_wb32(s->pb, MKBETAG('I', 'D', '3', mp3->id3v2_version));
+    avio_w8(s->pb, 0);
+    avio_w8(s->pb, 0); /* flags */
 
     /* reserve space for size */
-    size_pos = url_ftell(s->pb);
-    put_be32(s->pb, 0);
+    size_pos = avio_tell(s->pb);
+    avio_wb32(s->pb, 0);
 
-    ff_metadata_conv2(&metadata, &s->metadata, ff_id3v2_34_metadata_conv, NULL);
-    if (mp3->id3v2_version == 4)
-        ff_metadata_conv(&metadata, ff_id3v2_4_metadata_conv, NULL);
-
-    while ((t = av_metadata_get(metadata, "", t, AV_METADATA_IGNORE_SUFFIX))) {
-        int ret = id3v2_check_write_tag(s, t, ff_id3v2_tags, mp3->id3v2_version);
-        if (ret <= 0)
-            ret = id3v2_check_write_tag(s, t, NULL, mp3->id3v2_version);
-        totlen += ret;
+    // translate year / date tag
+    if ((t = av_dict_get(s->metadata, "date", NULL, 0)) && mp3->id3v2_version == 3 &&
+        !av_dict_get(s->metadata, "year", NULL, 0) && strlen(t->value) >= 4) {
+        t->value[5] = 0;
+        strcpy(t->key, "year");
     }
 
-    av_metadata_free(&metadata);
+    // translate year / date tag
+    if ((t = av_dict_get(s->metadata, "year", NULL, 0)) && mp3->id3v2_version == 4 &&
+        !av_dict_get(s->metadata, "date", NULL, 0)) {
+        strcpy(t->key, "date");
+    }
 
-    cur_pos = url_ftell(s->pb);
-    url_fseek(s->pb, size_pos, SEEK_SET);
+    for (t = NULL; t = av_dict_get(s->metadata, "", t, AV_DICT_IGNORE_SUFFIX);)
+        totlen += id3v2_write_tag(s, t);
+
+    cur_pos = avio_tell(s->pb);
+    avio_seek(s->pb, size_pos, SEEK_SET);
     id3v2_put_size(s, totlen);
-    url_fseek(s->pb, cur_pos, SEEK_SET);
+    avio_seek(s->pb, cur_pos, SEEK_SET);
+
+    if (s->pb->seekable)
+        mp3_write_xing(s);
 
     return 0;
 }
 
+static int mp3_write_packet(AVFormatContext *s, AVPacket *pkt)
+{
+    if (! pkt || ! pkt->data || pkt->size < 4)
+        return ff_raw_write_packet(s, pkt);
+    else {
+        MP3Context  *mp3 = s->priv_data;
+        MPADecodeHeader c;
+#ifdef FILTER_VBR_HEADERS
+        int base;
+#endif
+
+        ff_mpegaudio_decode_header(&c, AV_RB32(pkt->data));
+
+        if (!mp3->initial_bitrate)
+            mp3->initial_bitrate = c.bit_rate;
+        if (!mp3->has_variable_bitrate) {
+            if ((c.bit_rate == 0) || (mp3->initial_bitrate != c.bit_rate))
+                mp3->has_variable_bitrate = 1;
+        }
+
+#ifdef FILTER_VBR_HEADERS
+        /* filter out XING and INFO headers. */
+        base = 4 + xing_offtbl[c.lsf == 1][c.nb_channels == 1];
+
+        if (base + 4 <= pkt->size) {
+            uint32_t v = AV_RB32(pkt->data + base);
+
+            if (MKBETAG('X','i','n','g') == v || MKBETAG('I','n','f','o') == v)
+                return 0;
+        }
+
+        /* filter out VBRI headers. */
+        base = 4 + 32;
+
+        if (base + 4 <= pkt->size && MKBETAG('V','B','R','I') == AV_RB32(pkt->data + base))
+            return 0;
+#endif
+
+        if (mp3->frames_offset)
+            mp3_xing_add_frame(s, pkt);
+
+        return ff_raw_write_packet(s, pkt);
+    }
+}
+
+static int mp3_write_trailer(AVFormatContext *s)
+{
+    MP3Context  *mp3 = s->priv_data;
+
+    if (mp3->frames_offset)
+        mp3_fix_xing(s);
+
+    return 0;
+}
+
+static const AVMetadataConv ff_mp3_metadata_conv[] = {
+    { "APIC", "cover" },
+    { "TALB", "album" },
+    { "TCOM", "composer" },
+    { "TCON", "genre" },
+    { "TCOP", "copyright" },
+    { "TENC", "encoded_by" },
+    { "TIT2", "title" },
+    { "TLAN", "language" },
+    { "TPE1", "artist" },
+    { "TPE2", "album_artist" },
+    { "TPE3", "performer" },
+    { "TPOS", "disc" },
+    { "TPUB", "publisher" },
+    { "TRCK", "track" },
+    { "TSSE", "encoder" },
+    { "TYER", "year" },
+    { "USLT", "lyrics" },
+    { "TDRC", "date" },
+    { "TDRL", "release_date" },
+    { "TDEN", "creation_time" },
+    { "TSOA", "album-sort" },
+    { "TSOP", "artist-sort" },
+    { "TSOT", "title-sort" },
+    { 0 },
+};
+
 AVOutputFormat ff_mp3_muxer = {
-    "mp3",
-    NULL_IF_CONFIG_SMALL("MPEG audio layer 3"),
-    "audio/x-mpeg",
-    "mp3",
-    sizeof(MP3Context),
-    CODEC_ID_MP3,
-    CODEC_ID_NONE,
-    mp3_write_header,
-    mp3_write_packet,
-    .flags = AVFMT_NOTIMESTAMPS,
+    .name              = "mp3",
+    .long_name         = NULL_IF_CONFIG_SMALL("MPEG audio layer 3"),
+    .mime_type         = "audio/x-mpeg",
+    .extensions        = "mp3",
+    .priv_data_size    = sizeof(MP3Context),
+    .audio_codec       = CODEC_ID_MP3,
+    .video_codec       = CODEC_ID_NONE,
+    .write_header      = mp3_write_header,
+    .write_packet      = mp3_write_packet,
+    .write_trailer     = mp3_write_trailer,
+    .flags             = AVFMT_NOTIMESTAMPS,
+    .metadata_conv     = ff_mp3_metadata_conv,
     .priv_class = &mp3_muxer_class,
 };
 #endif

@@ -230,10 +230,12 @@ while(<$inf>) {
 
     # Single line command handlers.
 
-    /^\@(?:section|unnumbered|unnumberedsec|center)\s+(.+)$/
+    /^\@(?:section|unnumbered|unnumberedsec|center|heading)\s+(.+)$/
         and $_ = "\n=head2 $1\n";
-    /^\@subsection\s+(.+)$/
+    /^\@(?:subsection|subheading)\s+(.+)$/
         and $_ = "\n=head3 $1\n";
+    /^\@(?:subsubsection|subsubheading)\s+(.+)$/
+        and $_ = "\n=head4 $1\n";
 
     # Block command handlers:
     /^\@itemize\s*(\@[a-z]+|\*|-)?/ and do {
@@ -349,6 +351,7 @@ sub postprocess
     s/\(?\@xref\{(?:[^\}]*)\}(?:[^.<]|(?:<[^<>]*>))*\.\)?//g;
     s/\s+\(\@pxref\{(?:[^\}]*)\}\)//g;
     s/;\s+\@pxref\{(?:[^\}]*)\}//g;
+    s/\@ref\{([^\}]*)\}/$1/g;
     s/\@noindent\s*//g;
     s/\@refill//g;
     s/\@gol//g;

@@ -28,6 +28,7 @@
 #ifndef AVCODEC_MPEGVIDEO_H
 #define AVCODEC_MPEGVIDEO_H
 
+#include "avcodec.h"
 #include "dsputil.h"
 #include "get_bits.h"
 #include "put_bits.h"
@@ -76,16 +77,19 @@ enum OutputFormat {
 #define EXT_START_CODE          0x000001b5
 #define USER_START_CODE         0x000001b2
 
+struct MpegEncContext;
+
 /**
  * Picture.
  */
 typedef struct Picture{
-    FF_COMMON_FRAME
+    struct AVFrame f;
 
     /**
      * halfpel luma planes.
      */
     uint8_t *interpolated[3];
+    int8_t *qscale_table_base;
     int16_t (*motion_val_base[2])[2];
     uint32_t *mb_type_base;
 #define MB_TYPE_INTRA MB_TYPE_INTRA4x4 //default mb_type if there is just one type
@@ -123,6 +127,7 @@ typedef struct Picture{
     int ref_poc[2][2][16];      ///< h264 POCs of the frames used as reference (FIXME need per slice)
     int ref_count[2][2];        ///< number of entries in ref_poc              (FIXME need per slice)
     int mbaff;                  ///< h264 1 -> MBAFF frame 0-> not MBAFF
+    int field_picture;          ///< whether or not the picture was encoded in seperate fields
 
     int mb_var_sum;             ///< sum of MB variance for current frame
     int mc_mb_var_sum;          ///< motion compensated MB variance for current frame
@@ -131,9 +136,8 @@ typedef struct Picture{
     uint8_t *mb_mean;           ///< Table for MB luminance
     int32_t *mb_cmp_score;      ///< Table for MB cmp scores, for mb decision FIXME remove
     int b_frame_score;          /* */
+    struct MpegEncContext *owner2; ///< pointer to the MpegEncContext that allocated this picture
 } Picture;
-
-struct MpegEncContext;
 
 /**
  * Motion estimation context.
@@ -152,7 +156,7 @@ typedef struct MotionEstContext{
     uint32_t *score_map;               ///< map to store the scores
     int map_generation;
     int pre_penalty_factor;
-    int penalty_factor;                /*!< an estimate of the bits required to
+    int penalty_factor;                /**< an estimate of the bits required to
                                         code a given mv value, e.g. (1,0) takes
                                         more bits than (0,0). We have to
                                         estimate whether any reduction in
@@ -293,6 +297,8 @@ typedef struct MpegEncContext {
     Picture *last_picture_ptr;     ///< pointer to the previous picture.
     Picture *next_picture_ptr;     ///< pointer to the next picture (for bidir pred)
     Picture *current_picture_ptr;  ///< pointer to the current picture
+    int picture_count;             ///< number of allocated pictures (MAX_PICTURE_COUNT * avctx->thread_count)
+    int picture_range_start, picture_range_end; ///< the part of picture that this context can allocate in
     uint8_t *visualization_buffer[3]; //< temporary buffer vor MV visualization
     int last_dc[3];                ///< last DC values for MPEG1
     int16_t *dc_val_base;
@@ -300,8 +306,7 @@ typedef struct MpegEncContext {
     int16_t dc_cache[4*5];
     const uint8_t *y_dc_scale_table;     ///< qscale -> y_dc_scale table
     const uint8_t *c_dc_scale_table;     ///< qscale -> c_dc_scale table
-    const uint8_t *chroma_qscale_table;  ///< qp -> qscale (h263)
-    const uint8_t *qscale_table;         ///< qp -> qscale (nonlinear for mpeg2)
+    const uint8_t *chroma_qscale_table;  ///< qscale -> chroma_qscale (h263)
     uint8_t *coded_block_base;
     uint8_t *coded_block;          ///< used for coded block pattern prediction (msmpeg4v3, wmv1)
     int16_t (*ac_val_base)[16];
@@ -320,17 +325,15 @@ typedef struct MpegEncContext {
     uint8_t *obmc_scratchpad;
     uint8_t *b_scratchpad;        ///< scratchpad used for writing into write only buffers
 
-    int qp;                     ///< QP
-    int chroma_qp;              ///< chroma QP
-    int qscale;                 ///< qscale can differ from qp (non linear quant in mpeg-2)
-    int chroma_qscale;          ///< chroma qscale
+    int qscale;                 ///< QP
+    int chroma_qscale;          ///< chroma QP
     unsigned int lambda;        ///< lagrange multipler used in rate distortion
     unsigned int lambda2;       ///< (lambda*lambda) >> FF_LAMBDA_SHIFT
     int *lambda_table;
     int adaptive_quant;         ///< use adaptive quantization
     int dquant;                 ///< qscale difference to prev qscale
     int closed_gop;             ///< MPEG1/2 GOP is closed
-    int pict_type;              ///< FF_I_TYPE, FF_P_TYPE, FF_B_TYPE, ...
+    int pict_type;              ///< AV_PICTURE_TYPE_I, AV_PICTURE_TYPE_P, AV_PICTURE_TYPE_B, ...
     int last_pict_type; //FIXME removes
     int last_non_b_pict_type;   ///< used for mpeg4 gmc b-frames & ratecontrol
     int dropable;
@@ -390,9 +393,6 @@ typedef struct MpegEncContext {
 
     int no_rounding;  /**< apply no rounding to motion compensation (MPEG4, msmpeg4, ...)
                         for b-frames rounding mode is always 0 */
-
-    int hurry_up;     /**< when set to 1 during decoding, b frames will be skipped
-                         when set to 2 idct/dequant will be skipped too */
 
     /* macroblock layer */
     int mb_x, mb_y;
@@ -462,6 +462,7 @@ typedef struct MpegEncContext {
     int64_t wanted_bits;
     int64_t total_bits;
     int frame_bits;                ///< bits used for the current frame
+    int stuffing_bits;             ///< bits used for stuffing
     int next_lambda;               ///< next lambda used for retrying to encode a frame
     RateControlContext rc_context; ///< contains stuff only accessed in ratecontrol.c
 
@@ -478,7 +479,7 @@ typedef struct MpegEncContext {
     int last_bits; ///< temp var used for calculating the above vars
 
     /* error concealment / resync */
-    int error_count;
+    int error_count, error_occurred;
     uint8_t *error_status_table;       ///< table of the error status of each MB
 #define VP_START            1          ///< current MB is the first after a resync marker
 #define AC_ERROR            2
@@ -632,6 +633,7 @@ typedef struct MpegEncContext {
     int top_field_first;
     int concealment_motion_vectors;
     int q_scale_type;
+    const uint8_t *qscale_table; ///< linear or non linear (mpeg2)
     int intra_vlc_format;
     int alternate_scan;
     int repeat_first_field;
@@ -648,6 +650,8 @@ typedef struct MpegEncContext {
     int interlaced_dct;
     int first_slice;
     int first_field;         ///< is 1 for the first field of a field picture 0 otherwise
+
+    const char *pulldown;
 
     /* RTP specific */
     int rtp_mode;
@@ -689,6 +693,10 @@ typedef struct MpegEncContext {
     void (*denoise_dct)(struct MpegEncContext *s, DCTELEM *block);
 } MpegEncContext;
 
+#define REBASE_PICTURE(pic, new_ctx, old_ctx) (pic ? \
+    (pic >= old_ctx->picture && pic < old_ctx->picture+old_ctx->picture_count ?\
+        &new_ctx->picture[pic - old_ctx->picture] : pic - (Picture*)old_ctx + (Picture*)new_ctx)\
+    : NULL)
 
 void MPV_decode_defaults(MpegEncContext *s);
 int MPV_common_init(MpegEncContext *s);
@@ -711,19 +719,21 @@ void ff_draw_horiz_band(MpegEncContext *s, int y, int h);
 void ff_mpeg_flush(AVCodecContext *avctx);
 void ff_print_debug_info(MpegEncContext *s, AVFrame *pict);
 void ff_write_quant_matrix(PutBitContext *pb, uint16_t *matrix);
+void ff_release_unused_pictures(MpegEncContext *s, int remove_current);
 int ff_find_unused_picture(MpegEncContext *s, int shared);
 void ff_denoise_dct(MpegEncContext *s, DCTELEM *block);
 void ff_update_duplicate_context(MpegEncContext *dst, MpegEncContext *src);
+int MPV_lowest_referenced_row(MpegEncContext *s, int dir);
+void MPV_report_decode_progress(MpegEncContext *s);
+int ff_mpeg_update_thread_context(AVCodecContext *dst, const AVCodecContext *src);
 const uint8_t *ff_find_start_code(const uint8_t *p, const uint8_t *end, uint32_t *state);
-void ff_set_qscale(MpegEncContext * s, int qp);
+void ff_set_qscale(MpegEncContext * s, int qscale);
 
 void ff_er_frame_start(MpegEncContext *s);
 int ff_er_frame_end(MpegEncContext *s);
 void ff_er_add_slice(MpegEncContext *s, int startx, int starty, int endx, int endy, int status);
 
 int ff_dct_common_init(MpegEncContext *s);
-void ff_convert_matrix(DSPContext *dsp, int (*qmat)[64], uint16_t (*qmat16)[2][64], const uint8_t *qscale_table,
-                       const uint16_t *quant_matrix, int bias, int qmin, int qmax, int intra, uint64_t numerator);
 
 void ff_init_block_index(MpegEncContext *s);
 void ff_copy_picture(Picture *dst, Picture *src);
@@ -842,4 +852,3 @@ void ff_wmv2_encode_mb(MpegEncContext * s,
                        int motion_x, int motion_y);
 
 #endif /* AVCODEC_MPEGVIDEO_H */
-

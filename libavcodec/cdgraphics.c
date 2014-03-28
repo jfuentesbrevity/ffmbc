@@ -26,8 +26,8 @@
  * @file
  * @brief CD Graphics Video Decoder
  * @author Michael Tison
- * @sa http://wiki.multimedia.cx/index.php?title=CD_Graphics
- * @sa http://www.ccs.neu.edu/home/bchafy/cdb/info/cdg
+ * @see http://wiki.multimedia.cx/index.php?title=CD_Graphics
+ * @see http://www.ccs.neu.edu/home/bchafy/cdb/info/cdg
  */
 
 /// default screen sizes
@@ -377,6 +377,5 @@ AVCodec ff_cdgraphics_decoder = {
     cdg_decode_end,
     cdg_decode_frame,
     CODEC_CAP_DR1,
-    .max_lowres = 5,
     .long_name = NULL_IF_CONFIG_SMALL("CD Graphics video"),
 };

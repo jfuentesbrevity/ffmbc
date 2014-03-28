@@ -104,7 +104,7 @@ int ff_avfilter_graph_check_validity(AVFilterGraph *graph)
                 av_log(graph, AV_LOG_ERROR,
                        "Input pad \"%s\" for the filter \"%s\" of type \"%s\" not connected to any source\n",
                        filt->input_pads[j].name, filt->name, filt->filter->name);
-                return -1;
+                return AVERROR(EINVAL);
             }
         }
 
@@ -113,7 +113,7 @@ int ff_avfilter_graph_check_validity(AVFilterGraph *graph)
                 av_log(graph, AV_LOG_ERROR,
                        "Output pad \"%s\" for the filter \"%s\" of type \"%s\" not connected to any destination\n",
                        filt->output_pads[j].name, filt->name, filt->filter->name);
-                return -1;
+                return AVERROR(EINVAL);
             }
         }
     }
@@ -198,7 +198,7 @@ static int query_formats(AVFilterGraph *graph)
                         av_log(graph, AV_LOG_ERROR,
                                "Impossible to convert between the formats supported by the filter "
                                "'%s' and the filter '%s'\n", link->src->name, link->dst->name);
-                        return -1;
+                        return AVERROR(EINVAL);
                     }
                 }
             }
@@ -215,9 +215,20 @@ static void pick_format(AVFilterLink *link)
 
     link->in_formats->format_count = 1;
     link->format = link->in_formats->formats[0];
-
     avfilter_formats_unref(&link->in_formats);
     avfilter_formats_unref(&link->out_formats);
+
+    if (link->type == AVMEDIA_TYPE_AUDIO) {
+        link->in_chlayouts->format_count = 1;
+        link->channel_layout = link->in_chlayouts->formats[0];
+        avfilter_formats_unref(&link->in_chlayouts);
+        avfilter_formats_unref(&link->out_chlayouts);
+
+        link->in_packing->format_count = 1;
+        link->planar = link->in_packing->formats[0] == AVFILTER_PLANAR;
+        avfilter_formats_unref(&link->in_packing);
+        avfilter_formats_unref(&link->out_packing);
+    }
 }
 
 static void pick_formats(AVFilterGraph *graph)
@@ -237,9 +248,11 @@ static void pick_formats(AVFilterGraph *graph)
 
 int ff_avfilter_graph_config_formats(AVFilterGraph *graph)
 {
+    int ret;
+
     /* find supported formats from sub-filters, and merge along links */
     if (query_formats(graph))
-        return -1;
+        return ret;
 
     /* Once everything is merged, it's possible that we'll still have
      * multiple valid media format choices. We pick the first one. */

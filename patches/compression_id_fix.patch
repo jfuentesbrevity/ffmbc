@@ -1,0 +1,12 @@
+diff -r af5b430e11d1 0.7-rc8/libavformat/dnxhddec.c
+--- libavformat/dnxhddec.c	Sun Jun 03 09:55:29 2012 -0700
++++ libavformat/dnxhddec.c	Sun Jun 03 18:32:55 2012 -0700
+@@ -37,7 +37,7 @@
+     if (!w || !h)
+         return 0;
+     compression_id = AV_RB32(p->buf + 0x28);
+-    if (compression_id < 1237 || compression_id > 1253)
++    if (compression_id < 1235 || compression_id > 1253)
+         return 0;
+     return AVPROBE_SCORE_MAX;
+ }

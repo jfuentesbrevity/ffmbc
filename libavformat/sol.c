@@ -85,23 +85,22 @@ static int sol_channels(int magic, int type)
 static int sol_read_header(AVFormatContext *s,
                           AVFormatParameters *ap)
 {
-    int size;
     unsigned int magic,tag;
-    ByteIOContext *pb = s->pb;
+    AVIOContext *pb = s->pb;
     unsigned int id, channels, rate, type;
     enum CodecID codec;
     AVStream *st;
 
     /* check ".snd" header */
-    magic = get_le16(pb);
-    tag = get_le32(pb);
+    magic = avio_rl16(pb);
+    tag = avio_rl32(pb);
     if (tag != MKTAG('S', 'O', 'L', 0))
         return -1;
-    rate = get_le16(pb);
-    type = get_byte(pb);
-    size = get_le32(pb);
+    rate = avio_rl16(pb);
+    type = avio_r8(pb);
+    avio_skip(pb, 4); /* size */
     if (magic != 0x0B8D)
-        get_byte(pb); /* newer SOLs contain padding byte */
+        avio_r8(pb); /* newer SOLs contain padding byte */
 
     codec = sol_codec_id(magic, type);
     channels = sol_channels(magic, type);
@@ -142,12 +141,10 @@ static int sol_read_packet(AVFormatContext *s,
 }
 
 AVInputFormat ff_sol_demuxer = {
-    "sol",
-    NULL_IF_CONFIG_SMALL("Sierra SOL format"),
-    0,
-    sol_probe,
-    sol_read_header,
-    sol_read_packet,
-    NULL,
-    pcm_read_seek,
+    .name           = "sol",
+    .long_name      = NULL_IF_CONFIG_SMALL("Sierra SOL format"),
+    .read_probe     = sol_probe,
+    .read_header    = sol_read_header,
+    .read_packet    = sol_read_packet,
+    .read_seek      = pcm_read_seek,
 };

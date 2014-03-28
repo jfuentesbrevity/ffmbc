@@ -73,8 +73,8 @@ typedef struct LclDecContext {
 
 
 /**
- * \param srcptr compressed source buffer, must be padded with at least 5 extra bytes
- * \param destptr must be padded sufficiently for av_memcpy_backptr
+ * @param srcptr compressed source buffer, must be padded with at least 5 extra bytes
+ * @param destptr must be padded sufficiently for av_memcpy_backptr
  */
 static unsigned int mszh_decomp(const unsigned char * srcptr, int srclen, unsigned char * destptr, unsigned int destsize)
 {
@@ -119,11 +119,11 @@ static unsigned int mszh_decomp(const unsigned char * srcptr, int srclen, unsign
 
 #if CONFIG_ZLIB_DECODER
 /**
- * \brief decompress a zlib-compressed data block into decomp_buf
- * \param src compressed input buffer
- * \param src_len data length in input buffer
- * \param offset offset in decomp_buf
- * \param expected expected decompressed length
+ * @brief decompress a zlib-compressed data block into decomp_buf
+ * @param src compressed input buffer
+ * @param src_len data length in input buffer
+ * @param offset offset in decomp_buf
+ * @param expected expected decompressed length
  */
 static int zlib_decomp(AVCodecContext *avctx, const uint8_t *src, int src_len, int offset, int expected)
 {
@@ -453,6 +453,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
     unsigned int max_basesize = FFALIGN(avctx->width, 4) * FFALIGN(avctx->height, 4) + AV_LZO_OUTPUT_PADDING;
     unsigned int max_decomp_size;
 
+    avcodec_get_frame_defaults(&c->pic);
     if (avctx->extradata_size < 8) {
         av_log(avctx, AV_LOG_ERROR, "Extradata size too small.\n");
         return 1;

@@ -106,7 +106,7 @@ found:
     return i-(state&5);
 }
 
-/*!
+/**
  * Parse NAL units of found picture and decode some basic information.
  *
  * @param s parser context.
@@ -339,18 +339,19 @@ static int h264_parse(AVCodecParserContext *s,
         return next;
     }
 
-        if (h->sei_cpb_removal_delay >= 0) {
-            s->dts_sync_point    = h->sei_buffering_period_present;
-            s->dts_ref_dts_delta = h->sei_cpb_removal_delay;
-            s->pts_dts_delta     = h->sei_dpb_output_delay;
-        } else {
-            s->dts_sync_point    = INT_MIN;
-            s->dts_ref_dts_delta = INT_MIN;
-            s->pts_dts_delta     = INT_MIN;
-        }
-        if (s->flags & PARSER_FLAG_ONCE) {
-            s->flags &= PARSER_FLAG_COMPLETE_FRAMES;
-        }
+    if (h->sei_cpb_removal_delay >= 0) {
+        s->dts_sync_point    = h->sei_buffering_period_present;
+        s->dts_ref_dts_delta = h->sei_cpb_removal_delay;
+        s->pts_dts_delta     = h->sei_dpb_output_delay;
+    } else {
+        s->dts_sync_point    = INT_MIN;
+        s->dts_ref_dts_delta = INT_MIN;
+        s->pts_dts_delta     = INT_MIN;
+    }
+
+    if (s->flags & PARSER_FLAG_ONCE) {
+        s->flags &= PARSER_FLAG_COMPLETE_FRAMES;
+    }
 
     if (ret == 2) { // first field
         uint8_t *nbuf;

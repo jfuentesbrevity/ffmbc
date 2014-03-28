@@ -1,7 +1,6 @@
 /*
- * video fade filter
- * copyright (c) 2010 Brandon Mintern
- * based heavily on vf_negate.c which is copyright (c) 2007 Bobby Bingham
+ * Copyright (c) 2010 Brandon Mintern
+ * Copyright (c) 2007 Bobby Bingham
  *
  * This file is part of FFmpeg.
  *
@@ -20,181 +19,171 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/*
- # A few usage examples follow, usable too as test scenarios.
+/**
+ * @file
+ * video fade filter
+ * based heavily on vf_negate.c by Bobby Bingham
+ */
 
- # Fade in first 30 frames of video
- ffmpeg -i input.avi -vfilters fade=in:0:30 output.avi
-
- # Fade out last 45 frames of a 200-frame video
- ffmpeg -i input.avi -vfilters fade=out:155:45 output.avi
-
- # Fade in first 25 frames and fade out last 25 frames of a 1000-frame video
- ffmpeg -i input.avi -vfilters "fade=in:0:25, fade=out:975:25" output.avi
-
- # Make first 5 frames black, then fade in from frame 5-24
- ffmpeg -i input.avi -vfilters "fade=in:5:20" output.avi
-*/
-
+#include "libavutil/avstring.h"
+#include "libavutil/eval.h"
+#include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/parseutils.h"
+#include "libavutil/colorspace.h"
 #include "avfilter.h"
+#include "drawutils.h"
+#include "internal.h"
 
-typedef struct
-{
-    int factor, fade_per_frame;
-    unsigned int frame_index, start_frame, stop_frame;
-    int hsub, vsub, bpp;
+typedef struct {
+    const AVClass *class;
+    FFDrawContext dc;
+    FFDrawColor color;
+    double factor, fade_per_frame;
+    unsigned int frame_index, start_frame, stop_frame, nb_frames;
+    int alpha;
+    char type[4];
+    char *color_str;
 } FadeContext;
+
+#define OFFSET(x) offsetof(FadeContext, x)
+
+static const AVOption fade_options[] = {
+    {"alpha", "fade alpha if present",        OFFSET(alpha),     FF_OPT_TYPE_INT,    {.dbl=0}, 0, 1 },
+    {"color", "set color to fade to or from", OFFSET(color_str), FF_OPT_TYPE_STRING, {.str="black"}, CHAR_MIN, CHAR_MAX },
+    {NULL},
+};
+
+static const char *fade_get_name(void *ctx)
+{
+    return "fade";
+}
+
+static const AVClass fade_class = {
+    "FadeContext",
+    fade_get_name,
+    fade_options
+};
 
 static av_cold int init(AVFilterContext *ctx, const char *args, void *opaque)
 {
     FadeContext *fade = ctx->priv;
-    unsigned int frames;
-    char in_out[4];
+    int len, ret = 0;
 
-    if(args && sscanf(args, " %3[^:]:%u:%u", in_out,
-                   &fade->start_frame, &frames) == 3) {
-        frames = frames ? frames : 1;
-        fade->fade_per_frame = (1 << 16) / frames;
-        if (!strcmp(in_out, "in"))
-            fade->factor = 0;
-        else if (!strcmp(in_out, "out")) {
-            fade->fade_per_frame = -fade->fade_per_frame;
-            fade->factor = (1 << 16);
-        }
-        else {
-            av_log(ctx, AV_LOG_ERROR,
-                "init() 1st arg must be 'in' or 'out':'%s'\n", in_out);
-            return -1;
-        }
-        fade->stop_frame = fade->start_frame + frames;
-        return 0;
+    fade->class = &fade_class;
+    av_opt_set_defaults(fade);
+
+    if (!args ||
+        sscanf(args, " %3[^:]:%u:%u%n", fade->type, &fade->start_frame, &fade->nb_frames, &len) != 3) {
+        av_log(ctx, AV_LOG_ERROR,
+               "Expected 3 arguments '(in|out):#:#':'%s'\n", args);
+        return AVERROR(EINVAL);
     }
-    av_log(ctx, AV_LOG_ERROR,
-           "init() expected 3 arguments '(in|out):#:#':'%s'\n", args);
-    return -1;
+
+    if (args[len] == ':') {
+        if ((ret = av_set_options_string(fade, args+len+1, "=", ":")) < 0)
+            return ret;
+    }
+
+    if ((ret = av_parse_color(fade->color.rgba, fade->color_str, -1, ctx))) {
+        av_log(ctx, AV_LOG_ERROR, "Invalid text color '%s'\n", fade->color_str);
+        return ret;
+    }
+
+    fade->nb_frames = FFMAX(1, fade->nb_frames);
+    fade->fade_per_frame = 255.0 / fade->nb_frames;
+    if (!strcmp(fade->type, "in")) {
+        fade->fade_per_frame = -fade->fade_per_frame;
+        fade->factor = 255;
+    } else if (!strcmp(fade->type, "out")) {
+        fade->factor = 0;
+    } else {
+        av_log(ctx, AV_LOG_ERROR,
+               "Type argument must be 'in' or 'out' but '%s' was specified\n", fade->type);
+        return AVERROR(EINVAL);
+    }
+    fade->stop_frame = fade->start_frame + fade->nb_frames;
+
+    av_log(ctx, AV_LOG_INFO,
+           "type:%s start_frame:%d nb_frames:%d alpha:%d color:%s\n",
+           fade->type, fade->start_frame, fade->nb_frames, fade->alpha, fade->color_str);
+
+    return 0;
 }
 
 static int query_formats(AVFilterContext *ctx)
 {
-    enum PixelFormat pix_fmts[] = {
-        PIX_FMT_YUV444P,  PIX_FMT_YUV422P,  PIX_FMT_YUV420P,
-        PIX_FMT_YUV411P,  PIX_FMT_YUV410P,
-        PIX_FMT_YUVJ444P, PIX_FMT_YUVJ422P, PIX_FMT_YUVJ420P,
-        PIX_FMT_YUV440P,  PIX_FMT_YUVJ440P,
-        PIX_FMT_RGB24, PIX_FMT_BGR24,
-        PIX_FMT_NONE
-    };
-
-    avfilter_set_common_formats(ctx, avfilter_make_format_list(pix_fmts));
+    avfilter_set_common_pixel_formats(ctx, ff_draw_supported_pixel_formats(0));
     return 0;
 }
 
-static int config_props(AVFilterLink *link)
+static enum PixelFormat alpha_pix_fmts[] = {
+    PIX_FMT_YUVA420P,
+    PIX_FMT_ARGB, PIX_FMT_ABGR,
+    PIX_FMT_RGBA, PIX_FMT_BGRA,
+    PIX_FMT_NONE
+};
+
+static int config_props(AVFilterLink *inlink)
 {
-    FadeContext *fade = link->dst->priv;
+    FadeContext *fade = inlink->dst->priv;
 
-    fade->hsub = av_pix_fmt_descriptors[link->format].log2_chroma_w;
-    fade->vsub = av_pix_fmt_descriptors[link->format].log2_chroma_h;
+    ff_draw_init(&fade->dc, inlink->format, 0);
+    ff_draw_color(&fade->dc, &fade->color, fade->color.rgba);
 
-    if (link->format == PIX_FMT_RGB24 || link->format == PIX_FMT_BGR24)
-        fade->bpp = 3;
-    else
-        fade->bpp = 1;
+    fade->alpha = fade->alpha ? ff_fmt_is_in(inlink->format, alpha_pix_fmts) : 0;
+
     return 0;
 }
 
-static AVFilterBufferRef *get_video_buffer(AVFilterLink *inlink, int perms, int w, int h)
+static void draw_slice(AVFilterLink *inlink, int y, int h, int slice_dir)
 {
-    AVFilterBufferRef *picref = avfilter_get_video_buffer(inlink->dst->outputs[0],
-                                                       perms, w, h);
-    return picref;
+    FadeContext *fade = inlink->dst->priv;
+    AVFilterBufferRef *picref = inlink->cur_buf;
+
+    if (fade->factor > 0) {
+        fade->color.rgba[3] = lrint(fade->factor);
+        ff_draw_color(&fade->dc, &fade->color, fade->color.rgba);
+        ff_blend_rectangle(&fade->dc, &fade->color,
+                           picref->data, picref->linesize,
+                           picref->video->w, picref->video->h,
+                           0, y, picref->video->w, h);
+    }
+
+    avfilter_draw_slice(inlink->dst->outputs[0], y, h, slice_dir);
 }
 
-static void start_frame(AVFilterLink *link, AVFilterBufferRef *picref)
+static void end_frame(AVFilterLink *inlink)
 {
-    AVFilterBufferRef *outpicref = avfilter_ref_buffer(picref, ~0);
+    FadeContext *fade = inlink->dst->priv;
 
-    link->dst->outputs[0]->out_buf = outpicref;
-
-    avfilter_start_frame(link->dst->outputs[0], outpicref);
-}
-
-static void end_frame(AVFilterLink *link)
-{
-    FadeContext *fade = link->dst->priv;
-
-    avfilter_end_frame(link->dst->outputs[0]);
-    avfilter_unref_buffer(link->cur_buf);
+    avfilter_end_frame(inlink->dst->outputs[0]);
 
     if (fade->frame_index >= fade->start_frame &&
         fade->frame_index <= fade->stop_frame)
         fade->factor += fade->fade_per_frame;
-    fade->factor = av_clip_uint16(fade->factor);
+    fade->factor = av_clipf(fade->factor, 0, 255);
     fade->frame_index++;
 }
 
-static void draw_slice(AVFilterLink *link, int y, int h, int slice_dir)
-{
-    FadeContext *fade = link->dst->priv;
-    AVFilterBufferRef *outpic = link->dst->outputs[0]->out_buf;
-    uint8_t *p;
-    int i, j, plane;
-
-    if (fade->factor < 65536) {
-        /* luma or rgb plane */
-        for (i = 0; i < h; i++) {
-            p = outpic->data[0] + (y+i) * outpic->linesize[0];
-            for (j = 0; j < link->w * fade->bpp; j++) {
-                /* fade->factor is using 16 lower-order bits for decimal
-                 * places. 32768 = 1 << 15, it is an integer representation
-                 * of 0.5 and is for rounding. */
-                *p = (*p * fade->factor + 32768) >> 16;
-                p++;
-            }
-        }
-
-        if (outpic->data[0] && outpic->data[1]) {
-            /* chroma planes */
-            for (plane = 1; plane < 3; plane++) {
-                for (i = 0; i < h; i++) {
-                    p = outpic->data[plane] + ((y+i) >> fade->vsub) * outpic->linesize[plane];
-                    for (j = 0; j < link->w >> fade->hsub; j++) {
-                        /* 8421367 = ((128 << 1) + 1) << 15. It is an integer
-                         * representation of 128.5. The .5 is for rounding
-                         * purposes. */
-                        *p = ((*p - 128) * fade->factor + 8421367) >> 16;
-                        p++;
-                    }
-                }
-            }
-        }
-    }
-
-    avfilter_draw_slice(link->dst->outputs[0], y, h, slice_dir);
-}
-
-AVFilter avfilter_vf_fade =
-{
-    .name      = "fade",
-
-    .init      = init,
-
-    .priv_size = sizeof(FadeContext),
-
+AVFilter avfilter_vf_fade = {
+    .name          = "fade",
+    .description   = NULL_IF_CONFIG_SMALL("Fade in/out input video"),
+    .init          = init,
+    .priv_size     = sizeof(FadeContext),
     .query_formats = query_formats,
 
     .inputs    = (AVFilterPad[]) {{ .name            = "default",
                                     .type            = AVMEDIA_TYPE_VIDEO,
-                                    .get_video_buffer= get_video_buffer,
-                                    .start_frame     = start_frame,
-                                    .end_frame       = end_frame,
-                                    .draw_slice      = draw_slice,
                                     .config_props    = config_props,
-                                    .min_perms       = AV_PERM_READ, },
+                                    .get_video_buffer = avfilter_null_get_video_buffer,
+                                    .start_frame      = avfilter_null_start_frame,
+                                    .draw_slice      = draw_slice,
+                                    .end_frame       = end_frame,
+                                    .min_perms       = AV_PERM_READ | AV_PERM_WRITE,
+                                    .rej_perms       = AV_PERM_PRESERVE, },
                                   { .name = NULL}},
     .outputs   = (AVFilterPad[]) {{ .name            = "default",
                                     .type            = AVMEDIA_TYPE_VIDEO, },
                                   { .name = NULL}},
 };
-

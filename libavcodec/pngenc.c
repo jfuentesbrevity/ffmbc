@@ -243,7 +243,7 @@ static int encode_frame(AVCodecContext *avctx, unsigned char *buf, int buf_size,
     uint8_t *top_buf = NULL;
 
     *p = *pict;
-    p->pict_type= FF_I_TYPE;
+    p->pict_type= AV_PICTURE_TYPE_I;
     p->key_frame= 1;
 
     s->bytestream_start=
@@ -444,6 +444,7 @@ AVCodec ff_png_encoder = {
     png_enc_init,
     encode_frame,
     NULL, //encode_end,
+    .capabilities = CODEC_CAP_LOSSLESS,
     .pix_fmts= (const enum PixelFormat[]){PIX_FMT_RGB24, PIX_FMT_RGB32, PIX_FMT_PAL8, PIX_FMT_GRAY8, PIX_FMT_MONOBLACK, PIX_FMT_NONE},
     .long_name= NULL_IF_CONFIG_SMALL("PNG image"),
 };

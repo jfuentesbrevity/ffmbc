@@ -22,10 +22,8 @@
 /**
  * @file
  * Electronic Arts TQI Video Decoder
- * by Peter Ross <pross@xvid.org>
- *
- * Technical details here:
- * http://wiki.multimedia.cx/index.php?title=Electronic_Arts_TQI
+ * @author Peter Ross <pross@xvid.org>
+ * @see http://wiki.multimedia.cx/index.php?title=Electronic_Arts_TQI
  */
 
 #include "avcodec.h"
@@ -52,7 +50,7 @@ static av_cold int tqi_decode_init(AVCodecContext *avctx)
         avctx->idct_algo=FF_IDCT_EA;
     dsputil_init(&s->dsp, avctx);
     ff_init_scantable(s->dsp.idct_permutation, &s->intra_scantable, ff_zigzag_direct);
-    s->qp = 1;
+    s->qscale = 1;
     avctx->time_base = (AVRational){1, 15};
     avctx->pix_fmt = PIX_FMT_YUV420P;
     ff_mpeg12_init_vlcs();

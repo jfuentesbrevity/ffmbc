@@ -21,6 +21,8 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mathematics.h"
+#include "libavutil/opt.h"
 #include "avformat.h"
 
 #include "internal.h"
@@ -28,9 +30,7 @@
 #include "os_support.h"
 #include "rtsp.h"
 #include "rdt.h"
-
-//#define DEBUG
-//#define DEBUG_RTP_TCP
+#include "url.h"
 
 static int rtsp_read_play(AVFormatContext *s)
 {
@@ -60,8 +60,9 @@ static int rtsp_read_play(AVFormatContext *s)
             cmd[0] = 0;
         } else {
             snprintf(cmd, sizeof(cmd),
-                     "Range: npt=%0.3f-\r\n",
-                     (double)rt->seek_timestamp / AV_TIME_BASE);
+                     "Range: npt=%"PRId64".%03"PRId64"-\r\n",
+                     rt->seek_timestamp / AV_TIME_BASE,
+                     rt->seek_timestamp / (AV_TIME_BASE / 1000) % 1000);
         }
         ff_rtsp_send_cmd(s, "PLAY", rt->control_uri, cmd, reply, NULL);
         if (reply->status_code != RTSP_STATUS_OK) {
@@ -163,7 +164,12 @@ static int rtsp_read_header(AVFormatContext *s,
         return AVERROR(ENOMEM);
     rt->real_setup = rt->real_setup_cache + s->nb_streams;
 
-    if (ap->initial_pause) {
+#if FF_API_FORMAT_PARAMETERS
+    if (ap->initial_pause)
+        rt->initial_pause = ap->initial_pause;
+#endif
+
+    if (rt->initial_pause) {
          /* do not start immediately */
     } else {
          if (rtsp_read_play(s) < 0) {
@@ -183,9 +189,7 @@ int ff_rtsp_tcp_read_packet(AVFormatContext *s, RTSPStream **prtsp_st,
     int id, len, i, ret;
     RTSPStream *rtsp_st;
 
-#ifdef DEBUG_RTP_TCP
     av_dlog(s, "tcp_read_packet:\n");
-#endif
 redo:
     for (;;) {
         RTSPMessageHeader reply;
@@ -199,18 +203,16 @@ redo:
         if (rt->state != RTSP_STATE_STREAMING)
             return 0;
     }
-    ret = url_read_complete(rt->rtsp_hd, buf, 3);
+    ret = ffurl_read_complete(rt->rtsp_hd, buf, 3);
     if (ret != 3)
         return -1;
     id  = buf[0];
     len = AV_RB16(buf + 1);
-#ifdef DEBUG_RTP_TCP
     av_dlog(s, "id=%d len=%d\n", id, len);
-#endif
     if (len > buf_size || len < 12)
         goto redo;
     /* get the data */
-    ret = url_read_complete(rt->rtsp_hd, buf, len);
+    ret = ffurl_read_complete(rt->rtsp_hd, buf, len);
     if (ret != len)
         return -1;
     if (rt->transport == RTSP_TRANSPORT_RDT &&
@@ -311,7 +313,7 @@ retry:
 
     ret = ff_rtsp_fetch_packet(s, pkt);
     if (ret < 0) {
-        if (ret == FF_NETERROR(ETIMEDOUT) && !rt->packets) {
+        if (ret == AVERROR(ETIMEDOUT) && !rt->packets) {
             if (rt->lower_transport == RTSP_LOWER_TRANSPORT_UDP &&
                 rt->lower_transport_mask & (1 << RTSP_LOWER_TRANSPORT_TCP)) {
                 RTSPMessageHeader reply1, *reply = &reply1;
@@ -339,7 +341,9 @@ retry:
 
     /* send dummy request to keep TCP connection alive */
     if ((av_gettime() - rt->last_cmd_time) / 1000000 >= rt->timeout / 2) {
-        if (rt->server_type == RTSP_SERVER_WMS) {
+        if (rt->server_type == RTSP_SERVER_WMS ||
+           (rt->server_type != RTSP_SERVER_REAL &&
+            rt->get_parameter_supported)) {
             ff_rtsp_send_cmd_async(s, "GET_PARAMETER", rt->control_uri, NULL);
         } else {
             ff_rtsp_send_cmd_async(s, "OPTIONS", "*", NULL);
@@ -379,12 +383,6 @@ static int rtsp_read_close(AVFormatContext *s)
 {
     RTSPState *rt = s->priv_data;
 
-#if 0
-    /* NOTE: it is valid to flush the buffer here */
-    if (rt->lower_transport == RTSP_LOWER_TRANSPORT_TCP) {
-        url_fclose(&rt->rtsp_gb);
-    }
-#endif
     ff_rtsp_send_cmd_async(s, "TEARDOWN", rt->control_uri, NULL);
 
     ff_rtsp_close_streams(s);
@@ -395,16 +393,29 @@ static int rtsp_read_close(AVFormatContext *s)
     return 0;
 }
 
+static const AVOption options[] = {
+    { "initial_pause",  "Don't start playing the stream immediately", offsetof(RTSPState, initial_pause),  FF_OPT_TYPE_INT, {.dbl = 0}, 0, 1, AV_OPT_FLAG_DECODING_PARAM },
+    { NULL },
+};
+
+const AVClass rtsp_demuxer_class = {
+    .class_name     = "RTSP demuxer",
+    .item_name      = av_default_item_name,
+    .option         = options,
+    .version        = LIBAVUTIL_VERSION_INT,
+};
+
 AVInputFormat ff_rtsp_demuxer = {
-    "rtsp",
-    NULL_IF_CONFIG_SMALL("RTSP input format"),
-    sizeof(RTSPState),
-    rtsp_probe,
-    rtsp_read_header,
-    rtsp_read_packet,
-    rtsp_read_close,
-    rtsp_read_seek,
+    .name           = "rtsp",
+    .long_name      = NULL_IF_CONFIG_SMALL("RTSP input format"),
+    .priv_data_size = sizeof(RTSPState),
+    .read_probe     = rtsp_probe,
+    .read_header    = rtsp_read_header,
+    .read_packet    = rtsp_read_packet,
+    .read_close     = rtsp_read_close,
+    .read_seek      = rtsp_read_seek,
     .flags = AVFMT_NOFILE,
     .read_play = rtsp_read_play,
     .read_pause = rtsp_read_pause,
+    .priv_class = &rtsp_demuxer_class,
 };

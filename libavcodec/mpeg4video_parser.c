@@ -71,13 +71,10 @@ static int av_mpeg4_decode_header(AVCodecParserContext *s1,
     ParseContext1 *pc = s1->priv_data;
     MpegEncContext *s = pc->enc;
     GetBitContext gb1, *gb = &gb1;
-    int old_debug = avctx->debug;
     int ret;
 
     s->avctx = avctx;
     s->current_picture_ptr = &s->current_picture;
-
-    avctx->debug = !avctx->codec ^ 0;
 
     if (avctx->extradata_size && pc->first_picture){
         init_get_bits(gb, avctx->extradata, avctx->extradata_size*8);
@@ -89,7 +86,6 @@ static int av_mpeg4_decode_header(AVCodecParserContext *s1,
     if (s->width && (!avctx->width || !avctx->height || !avctx->coded_width || !avctx->coded_height)) {
         avcodec_set_dimensions(avctx, s->width, s->height);
     }
-    avctx->debug = old_debug;
     s1->pict_type= s->pict_type;
     pc->first_picture = 0;
     return ret;

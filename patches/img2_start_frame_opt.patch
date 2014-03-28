@@ -1,0 +1,84 @@
+Index: libavformat/img2.c
+===================================================================
+--- libavformat/img2.c	(revision 1275)
++++ libavformat/img2.c	(working copy)
+@@ -138,10 +138,12 @@
+                             const char *path)
+ {
+     char buf[1024];
+-    int range, last_index, range1, first_index;
++    int range, last_index, range1, first_index, highest_possible_first;
+ 
+     /* find the first image */
+-    for(first_index = 0; first_index < 5; first_index++) {
++    first_index = *pfirst_index;
++    highest_possible_first = first_index + 5;
++    for(; first_index <= highest_possible_first; first_index++) {
+         if (av_get_frame_filename(buf, sizeof(buf), path, first_index) < 0){
+             *pfirst_index =
+             *plast_index = 1;
+@@ -152,7 +154,7 @@
+         if (avio_check(buf, AVIO_FLAG_READ) > 0)
+             break;
+     }
+-    if (first_index == 5)
++    if (first_index == highest_possible_first)
+         goto fail;
+ 
+     /* find the last image */
+@@ -276,6 +278,7 @@
+     st->r_frame_rate.den = st->time_base.num;
+ 
+     if (!s->is_pipe) {
++        first_index = s->img_first;
+         if (find_image_range(&first_index, &last_index, s->path) < 0)
+             return AVERROR(ENOENT);
+         s->img_first = first_index;
+@@ -380,7 +383,7 @@
+     VideoData *img = s->priv_data;
+     const char *str;
+ 
+-    img->img_number = 1;
++    img->img_number = img->img_first;
+     av_strlcpy(img->path, s->filename, sizeof(img->path));
+ 
+     /* find format */
+@@ -472,16 +475,18 @@
+ 
+ #define OFFSET(x) offsetof(VideoData, x)
+ #define DEC AV_OPT_FLAG_DECODING_PARAM
++#define VDE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_ENCODING_PARAM
+ static const AVOption options[] = {
+     { "pixel_format", "", OFFSET(pixel_format), FF_OPT_TYPE_STRING, {.str = NULL}, 0, 0, DEC },
+     { "video_size",   "", OFFSET(video_size),   FF_OPT_TYPE_STRING, {.str = NULL}, 0, 0, DEC },
+     { "framerate",    "", OFFSET(framerate),    FF_OPT_TYPE_STRING, {.str = "25"}, 0, 0, DEC },
+     { "loop",         "", OFFSET(loop),         FF_OPT_TYPE_INT,    {.dbl = 0},    0, 1, DEC },
++    { "start_frame",  "", OFFSET(img_first),    FF_OPT_TYPE_INT,    1, 0, 99999, VDE },
+     { NULL },
+ };
+ 
+ static const AVClass img2_class = {
+-    .class_name = "image2 demuxer",
++    .class_name = "image2 muxer/demuxer",
+     .item_name  = av_default_item_name,
+     .option     = options,
+     .version    = LIBAVUTIL_VERSION_INT,
+@@ -522,7 +527,8 @@
+     .video_codec    = CODEC_ID_MJPEG,
+     .write_header   = write_header,
+     .write_packet   = write_packet,
+-    .flags          = AVFMT_NOTIMESTAMPS | AVFMT_NODIMENSIONS | AVFMT_NOFILE
++    .flags          = AVFMT_NOTIMESTAMPS | AVFMT_NODIMENSIONS | AVFMT_NOFILE,
++    .priv_class     = &img2_class
+ };
+ #endif
+ #if CONFIG_IMAGE2PIPE_MUXER
+@@ -533,6 +539,7 @@
+     .video_codec    = CODEC_ID_MJPEG,
+     .write_header   = write_header,
+     .write_packet   = write_packet,
+-    .flags          = AVFMT_NOTIMESTAMPS | AVFMT_NODIMENSIONS
++    .flags          = AVFMT_NOTIMESTAMPS | AVFMT_NODIMENSIONS,
++    .priv_class     = &img2_class
+ };
+ #endif

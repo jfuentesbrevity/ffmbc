@@ -66,7 +66,7 @@ typedef struct {
     char volume[28];
     char filename[64];
     int16_t nlvl_to, nlvl_from;
-    ByteIOContext *pb;
+    AVIOContext *pb;
 } MOVDref;
 
 typedef struct {
@@ -115,14 +115,14 @@ typedef struct MOVStreamContext {
     unsigned int keyframe_count;
     int *keyframes;
     int time_scale;
-    int time_offset;      ///< time offset of the first edit list entry
+    int64_t time_offset;  ///< time offset of the first edit list entry
     int current_sample;
     unsigned int bytes_per_frame;
     unsigned int samples_per_frame;
     int dv_audio_container;
     int *dref_ids;
     int dref_ids_count;
-    ByteIOContext **sample_dref;
+    AVIOContext **sample_dref;
     int16_t audio_cid;    ///< stsd audio compression id
     unsigned drefs_count;
     MOVDref *drefs;
@@ -130,15 +130,18 @@ typedef struct MOVStreamContext {
     int width;            ///< tkhd width
     int height;           ///< tkhd height
     int dts_shift;        ///< dts shift when ctts is negative
+    uint32_t palette[256];
+    int has_palette;
     AVRational pixel_aspect; ///< information in 'pasp' atom
+    AVRational clap_width, clap_height; ///< clean aperture info in 'clap' atom
     MOVElst *elst_data;   ///< edit list
     unsigned elst_count;
+    int64_t stts_end;    ///< used for dts generation in fragmented movie files
 } MOVStreamContext;
 
 typedef struct MOVContext {
     AVFormatContext *fc;
     int time_scale;
-    int64_t duration;     ///< duration of the longest track
     int found_moov;       ///< 'moov' atom has been found
     int found_mdat;       ///< 'mdat' atom has been found
     DVDemuxContext *dv_demux;
@@ -149,23 +152,25 @@ typedef struct MOVContext {
     unsigned trex_count;
     int itunes_metadata;  ///< metadata are itunes style
     int chapter_track;
-    AVMetadata **metadata;///< current metadata context (track or global)
-    char **keys_data;     ///< metadata keys
-    unsigned keys_count;  ///< metadata keys
+    AVDictionary **metadata; ///< current metadata context (track or global)
+    char **keys_data;        ///< metadata keys
+    unsigned keys_count;     ///< metadata keys
 } MOVContext;
 
-int ff_mp4_read_descr_len(ByteIOContext *pb);
-int ff_mp4_read_descr(AVFormatContext *fc, ByteIOContext *pb, int *tag);
-int ff_mp4_read_dec_config_descr(AVFormatContext *fc, AVStream *st, ByteIOContext *pb);
+int ff_mp4_read_descr_len(AVIOContext *pb);
+int ff_mp4_read_descr(AVFormatContext *fc, AVIOContext *pb, int *tag);
+int ff_mp4_read_dec_config_descr(AVFormatContext *fc, AVStream *st, AVIOContext *pb);
 
 #define MP4IODescrTag                   0x02
 #define MP4ESDescrTag                   0x03
 #define MP4DecConfigDescrTag            0x04
 #define MP4DecSpecificDescrTag          0x05
 
-int ff_mov_read_esds(AVFormatContext *fc, ByteIOContext *pb, MOVAtom atom);
+int ff_mov_read_esds(AVFormatContext *fc, AVIOContext *pb, MOVAtom atom);
 enum CodecID ff_mov_get_lpcm_codec_id(int bps, int flags);
 
-int ff_mov_read_stsd_entries(MOVContext *c, ByteIOContext *pb, int entries);
+int ff_mov_read_stsd_entries(MOVContext *c, AVIOContext *pb, int entries);
+void ff_mov_read_chan(AVFormatContext *s, int64_t size, AVCodecContext *codec);
+void ff_mov_write_chan(AVIOContext *pb, int64_t channel_layout);
 
 #endif /* AVFORMAT_ISOM_H */

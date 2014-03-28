@@ -52,7 +52,7 @@ static int encode_frame(AVCodecContext *avctx, unsigned char *buf,
     unsigned char *orig_buf = buf, *end_buf = buf + buf_size;
 
     *p = *(AVFrame*)data;
-    p->pict_type = FF_I_TYPE;
+    p->pict_type = AV_PICTURE_TYPE_I;
     p->key_frame = 1;
 
     width  = avctx->width;
@@ -167,6 +167,7 @@ AVCodec ff_sgi_encoder = {
     encode_init,
     encode_frame,
     NULL,
+    .capabilities = CODEC_CAP_LOSSLESS,
     .pix_fmts= (const enum PixelFormat[]){PIX_FMT_RGB24, PIX_FMT_RGBA, PIX_FMT_GRAY8, PIX_FMT_NONE},
     .long_name= NULL_IF_CONFIG_SMALL("SGI image"),
 };

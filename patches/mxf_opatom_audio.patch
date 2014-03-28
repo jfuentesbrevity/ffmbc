@@ -1,0 +1,22 @@
+Index: FFmbc/src/libavformat/mxfdec.c
+===================================================================
+--- FFmbc/src/libavformat/mxfdec.c	(revision 1852)
++++ FFmbc/src/libavformat/mxfdec.c	(working copy)
+@@ -416,15 +416,8 @@
+                 av_log(s, AV_LOG_ERROR, "clip wrapping without index is not currently supported\n");
+                 return -1;
+             }
+-            if (!index_segment->edit_unit_bytecount) {
+-                av_log(s, AV_LOG_ERROR, "clip wrapping with variable byte per unit is not currently supported\n");
+-                return -1;
+-            }
+-            if ((st->codec->codec_id == CODEC_ID_PCM_S16LE ||
+-                 st->codec->codec_id == CODEC_ID_PCM_S24LE) && st->time_base.num == 1)
+-                track->edit_unit_bytecount = index_segment->edit_unit_bytecount*1000;
+-            else
+-                track->edit_unit_bytecount = index_segment->edit_unit_bytecount;
++            if (!index_segment->edit_unit_bytecount) size = index_segment->edit_unit_bytecount = track->klv.length;
++            track->edit_unit_bytecount = index_segment->edit_unit_bytecount;
+         }
+ 
+         if (track->descriptor->padding_size) {

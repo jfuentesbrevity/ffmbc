@@ -33,7 +33,7 @@ extern const uint64_t av_hidden ff_wtwo;
 
 extern const uint64_t av_hidden ff_pdw_80000000[2];
 
-extern const uint64_t av_hidden ff_pw_1;
+extern const xmm_reg  av_hidden ff_pw_1;
 extern const xmm_reg  av_hidden ff_pw_3;
 extern const xmm_reg  av_hidden ff_pw_4;
 extern const xmm_reg  av_hidden ff_pw_5;
@@ -196,12 +196,13 @@ void ff_add_pixels_clamped_mmx(const DCTELEM *block, uint8_t *pixels, int line_s
 void ff_put_pixels_clamped_mmx(const DCTELEM *block, uint8_t *pixels, int line_size);
 void ff_put_signed_pixels_clamped_mmx(const DCTELEM *block, uint8_t *pixels, int line_size);
 
+void ff_put_pixels_10_clamped_sse2(const DCTELEM *block, uint8_t *restrict pixels, int stride);
+
 void ff_put_cavs_qpel8_mc00_mmx2(uint8_t *dst, uint8_t *src, int stride);
 void ff_avg_cavs_qpel8_mc00_mmx2(uint8_t *dst, uint8_t *src, int stride);
 void ff_put_cavs_qpel16_mc00_mmx2(uint8_t *dst, uint8_t *src, int stride);
 void ff_avg_cavs_qpel16_mc00_mmx2(uint8_t *dst, uint8_t *src, int stride);
 
-void ff_vc1dsp_init_mmx(DSPContext* dsp, AVCodecContext *avctx);
 void ff_put_vc1_mspel_mc00_mmx(uint8_t *dst, const uint8_t *src, int stride, int rnd);
 void ff_avg_vc1_mspel_mc00_mmx2(uint8_t *dst, const uint8_t *src, int stride, int rnd);
 

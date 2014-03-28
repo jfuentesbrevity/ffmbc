@@ -26,7 +26,6 @@
 
 /**
  * @file
- *
  * G.722 ADPCM audio codec
  *
  * This G.722 decoder is a bit-exact implementation of the ITU G.722
@@ -577,7 +576,7 @@ AVCodec ff_adpcm_g722_encoder = {
     .close          = g722_close,
     .encode         = g722_encode_frame,
     .long_name      = NULL_IF_CONFIG_SMALL("G.722 ADPCM"),
-    .sample_fmts    = (enum AVSampleFormat[]){AV_SAMPLE_FMT_S16,AV_SAMPLE_FMT_NONE},
+    .sample_fmts    = (const enum AVSampleFormat[]){AV_SAMPLE_FMT_S16,AV_SAMPLE_FMT_NONE},
 };
 #endif
 

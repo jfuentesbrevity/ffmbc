@@ -76,7 +76,7 @@ static int encode_frame(AVCodecContext *avctx, unsigned char *buf, int buf_size,
     int zret; // Zlib return code
 
     *p = *pict;
-    p->pict_type= FF_I_TYPE;
+    p->pict_type= AV_PICTURE_TYPE_I;
     p->key_frame= 1;
 
     if(avctx->pix_fmt != PIX_FMT_BGR24){
@@ -178,6 +178,7 @@ AVCodec ff_zlib_encoder = {
     encode_init,
     encode_frame,
     encode_end,
+    .capabilities = CODEC_CAP_LOSSLESS,
     .pix_fmts = (const enum PixelFormat[]) { PIX_FMT_BGR24, PIX_FMT_NONE },
     .long_name = NULL_IF_CONFIG_SMALL("LCL (LossLess Codec Library) ZLIB"),
 };

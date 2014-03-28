@@ -38,7 +38,7 @@ static int read_header(AVFormatContext *s, AVFormatParameters *ap)
     /// 75 sectors/sec * 4 packets/sector = 300 packets/sec
     av_set_pts_info(vst, 32, 1, 300);
 
-    ret = url_fsize(s->pb);
+    ret = avio_size(s->pb);
     if (ret > 0)
         vst->duration = (ret * vst->time_base.den) / (CDG_PACKET_SIZE * 300);
 
@@ -56,11 +56,9 @@ static int read_packet(AVFormatContext *s, AVPacket *pkt)
 }
 
 AVInputFormat ff_cdg_demuxer = {
-    "cdg",
-    NULL_IF_CONFIG_SMALL("CD Graphics Format"),
-    0,
-    NULL,
-    read_header,
-    read_packet,
+    .name           = "cdg",
+    .long_name      = NULL_IF_CONFIG_SMALL("CD Graphics Format"),
+    .read_header    = read_header,
+    .read_packet    = read_packet,
     .extensions = "cdg"
 };
